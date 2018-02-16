@@ -335,7 +335,7 @@ public final class Util {
          * existentes
          * @param propName Nombre de la propiedad actual que se revisa
          */
-        private static void findProps(DataObject prop, String propName, HashMap<String, String> collection, SWBScriptEngine engine) {
+        public static void findProps(DataObject prop, String propName, HashMap<String, String> collection, SWBScriptEngine engine) {
             Iterator<String> it = prop.keySet().iterator();
             while (it.hasNext()) {
                 String next = it.next();
