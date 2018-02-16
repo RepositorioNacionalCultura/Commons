@@ -329,14 +329,184 @@ public final class Util {
      */
     public static final class SWBForms {
         /**
+         * Carga en el hm todas las propiedades del DataObject
+         *
+         * @param prop DataObject a revisar para obtener la lista de propiedades
+         * existentes
+         * @param propName Nombre de la propiedad actual que se revisa
+         */
+        private static void findProps(DataObject prop, String propName, HashMap<String, String> collection, SWBScriptEngine engine) {
+            Iterator<String> it = prop.keySet().iterator();
+            while (it.hasNext()) {
+                String next = it.next();
+                Object obj = prop.get(next);
+                String key = propName + "." + next;
+                if (null != obj && obj instanceof DataObject) {
+                    findProps((DataObject) obj, key, collection, engine);
+                } else {
+                    //buscar propiedad en el hashmap
+                    if (collection.get(propName) != null) {
+                        // Sólo puede tener un valor
+                        String coll2use = collection.get(propName);
+                        SWBDataSource dscoll = engine.getDataSource(coll2use);
+
+                        if (null != dscoll) {
+                            try {
+                                DataObject r = new DataObject();
+                                DataObject data = new DataObject();
+                                r.put("data", data);
+                                data.put("value", obj);
+                                DataObject ret = dscoll.fetch(r);
+                                DataList rdata = ret.getDataObject("response").getDataList("data");
+                                DataObject res = null;
+                                if (!rdata.isEmpty()) {
+                                    String replaceValue = null;
+                                    for (int i = 0; i < rdata.size(); i++) {
+                                        res = rdata.getDataObject(i);  // DataObject de Replace
+                                        if (replaceValue == null) {
+                                            replaceValue = "";
+                                        }
+                                        if (replaceValue.length() > 0) {
+                                            replaceValue += ",";
+                                        }
+                                        replaceValue += res.getString("replace");
+                                    }
+                                    prop.put(next, replaceValue);
+                                } else {
+//                                System.out.println("No se encontró valor "+obj+" en la colección..."+coll2use);
+                                }
+                            } catch (Exception e) {
+                                //No se encontró la propiedad con el valor actual
+                                logger.error("Error al buscar el valor en la colección", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /**
+         * MApeo de propiedades definidas en el DataObject transformado
+         *
+         * @param dobj DataObject para revisar propiedades y mapearlas en relación a
+         * la tabla de mapeo definida en el mismo extractor
+         * @param collection Tabla de mapeo cargada en un HashMap<String,String>
+         * definida en el extractor
+         * @param engine, para obtener el dataSource de la colección en donde se
+         * buscará el valor a sustituir, si existe.
+         */
+        public static void findProps(DataObject dobj, HashMap<String, String> collection, SWBScriptEngine engine) {
+
+            Iterator<String> it = dobj.keySet().iterator();
+            while (it.hasNext()) {
+                String next1 = it.next();
+
+                Object obj = dobj.get(next1);
+                if (null != obj && obj instanceof DataObject) {
+                    findProps((DataObject) obj, next1, collection, engine);
+                } else {
+                    //buscar y actualizar propiedad
+                    //buscar propiedad en el hashmap
+//                System.out.println("Buscando propiedad en HM "+next1);
+                    next1 = next1.trim();
+                    if (collection.get(next1) != null) {
+                        // Sólo puede tener un valor
+                        String coll2use = collection.get(next1);
+                        SWBDataSource dscoll = engine.getDataSource(coll2use);
+
+                        if (null != dscoll) {
+                            try {
+                                DataObject r = new DataObject();
+                                DataObject data = new DataObject();
+                                r.put("data", data);
+                                data.put("value", obj);
+                                DataObject ret = dscoll.fetch(r);
+                                DataList rdata = ret.getDataObject("response").getDataList("data");
+                                DataObject res = null;
+                                if (!rdata.isEmpty()) {
+                                    String replaceValue = null;
+                                    for (int i = 0; i < rdata.size(); i++) {
+                                        res = rdata.getDataObject(i);  // DataObject de Replace
+                                        if (replaceValue == null) {
+                                            replaceValue = "";
+                                        }
+                                        if (replaceValue.length() > 0) {
+                                            replaceValue += ",";
+                                        }
+                                        replaceValue += res.getString("replace");
+                                    }
+                                    dobj.put(next1, replaceValue);
+                                } else {
+                                    //System.out.println("No se encomnró valor "+obj+" en la colección..."+coll2use);
+                                }
+                            } catch (Exception e) {
+                                //No se encontró la propiedad con el valor actual
+                                logger.error("Error al buscar el valor en la colección", e);
+                            }
+
+                        }
+                    }
+                    //hm.put(next1, next1);
+                }
+            }
+//        return hm;
+        }
+
+        /**
          * Carga la colección de Replace a un HashMap<ocurrencia, reemplazo>
          *
-         * @param engine Utilizado para poder cargar la colección de Replace en un HashMap
+         * @param engine Utilizado para poder cargar la colección de Replace en un
+         * HashMap
          * @return HashMap con DataSource cargado en memoria.
          */
-        public static HashMap<String,String> loadOccurrences( SWBScriptEngine engine) {
+        public static HashMap<String, String> loadExtractorMapTable(SWBScriptEngine engine, DataObject extDef) {
+            HashMap<String, String> hm = new HashMap();
+            try {
+                SWBDataSource dsMDef = engine.getDataSource("MapDefinition");
+                DataObject doMDef = dsMDef.fetchObjById(extDef.getString("mapDef"));
+                SWBDataSource ds = engine.getDataSource("MapTable");
+
+                if (null != engine && extDef != null) {
+                    try {
+                        DataList dl = doMDef.getDataList("mapTable");
+                        if (null != dl && dl.size() > 0) {
+                            //System.out.println("MapTable");
+                            for (int i = 0; i < dl.size(); i++) {
+                                String llave = dl.getString(i);
+                                DataObject dobj = ds.fetchObjById(llave);
+                                if (null != dobj) {
+                                    //System.out.println("("+dobj.getString("property")+","+dobj.getString("collName")+")");
+                                    hm.put(dobj.getString("property"), dobj.getString("collName"));
+                                }
+                            }
+                        }
+
+                    } catch (Exception e) {
+                        logger.error("Error al cargar el DataSource. ", e);
+                    }
+                } else {
+                    logger.error("Error al cargar el DataSource al HashMap, falta inicializar el engine.");
+                    return null;
+                }
+            } catch (Exception ex) {
+                logger.error(ex);
+            }
+
+            return hm;
+        }
+
+
+        /**
+         * Carga la colección de Replace a un HashMap<ocurrencia, reemplazo>
+         *
+         * @param engine Utilizado para poder cargar la colección de Replace en un
+         * HashMap
+         * @return HashMap con DataSource cargado en memoria.
+         */
+        public static HashMap<String, String> loadOccurrences(SWBScriptEngine engine) {
+
             SWBDataSource datasource = null;
-            HashMap<String,String> hm = new HashMap();
+            HashMap<String, String> hm = new HashMap();
 
             if (null != engine) {
                 try {
@@ -360,7 +530,7 @@ public final class Util {
                         }
                     }
                 } catch (Exception e) {
-                    logger.error("Error al cargar el DataSource. " + e.getMessage());
+                    logger.error("Error al cargar el DataSource. ", e);
                 }
             } else {
                 logger.error("Error al cargar el DataSource al HashMap, falta inicializar el engine.");
@@ -451,14 +621,108 @@ public final class Util {
      */
     public static final class TEXT {
         /**
+         * Format milliseconds long number in days, hours, minutes, seconds and
+         * milliseconds
+         *
+         * @param elapsedTime time to determinate in days, hours, minutes, seconds
+         * and milliseconds takes.
+         * @return a text in days, hours, minutes, seconds and milliseconds format
+         */
+        public static String getElapsedTime(long elapsedTime) {
+            String etime = elapsedTime + "ms";
+            long seg = 1000;
+            long min = 60 * seg;
+            long hr = 60 * min;
+            long day = 24 * hr;
+
+            long ndays = 0;
+            long nhr = 0;
+            long nmin = 0;
+            long nseg = 0;
+            long nms = 0;
+
+            if (elapsedTime > day) {
+                ndays = elapsedTime / day;
+                if (ndays > 0 && (elapsedTime % day) > 0) {
+                    nhr = ((elapsedTime % day)) / hr;
+                }
+                if (nhr > 0 && (((elapsedTime % day)) % hr) > 0) {
+                    nmin = ((elapsedTime % day) % hr) / min;
+                }
+                if (nmin > 0 && (((elapsedTime % day) % hr) % min) > 0) {
+                    nseg = (((elapsedTime % day) % hr) % min) / seg;
+                }
+                if (nseg > 0 && ((((elapsedTime % day) % hr) % min) % seg) > 0) {
+                    nms = (((elapsedTime % day) % hr) % min) % seg;
+                }
+
+            } else if (elapsedTime > hr) {
+                nhr = elapsedTime / hr;
+                if (nhr > 0 && (elapsedTime % hr) > 0) {
+                    nmin = (elapsedTime % hr) / min;
+                }
+                if (nmin > 0 && ((elapsedTime % hr) % min) > 0) {
+                    nseg = ((elapsedTime % hr) % min) / seg;
+                }
+                if (nseg > 0 && (((elapsedTime % hr) % min) % seg) > 0) {
+                    nms = (((elapsedTime % hr) % min) % seg);
+                }
+            } else if (elapsedTime > min) {
+                nmin = elapsedTime / min;
+                if (nmin > 0 && (elapsedTime % min) > 0) {
+                    nseg = ((elapsedTime % min)) / seg;
+                }
+                if (nseg > 0 && (((elapsedTime % min) % seg)) > 0) {
+                    nms = ((elapsedTime % min) % seg);
+                }
+
+            } else if (elapsedTime > seg) {
+                nseg = elapsedTime / seg;
+            } else {
+                nms = elapsedTime;
+            }
+
+            etime = "";
+            if (ndays > 0) {
+                etime = ndays + "dias ";
+            }
+            if (nhr > 0) {
+                if (nhr < 10) {
+                    etime += "0" + nhr + "hrs ";
+                } else {
+                    etime += nhr + "hrs ";
+                }
+            }
+            if (nmin > 0) {
+                if (nmin < 10) {
+                    etime += "0" + nmin + "min ";
+                } else {
+                    etime += nmin + "min ";
+                }
+            }
+            if (nseg > 0) {
+                if (nseg < 10) {
+                    etime += "0" + nseg + "sec ";
+                } else {
+                    etime += nseg + "sec ";
+                }
+            }
+            if (nms > 0) {
+                etime += nms + "ms";
+            }
+
+            return etime;
+        }
+
+        /**
          * Reemplaza las ocurrencias en el string recibido
          *
          * @param hm HashMap con las ocurrencias y su reemplazo previamente cargado
          * @param oaistr Stream del registro OAI a revisar
          * @return String con todas las ocurrencias reemplazadas.
          */
-        public static String replaceOccurrences(HashMap<String,String> hm, String oaistr) {
-            if (null != hm && null!=oaistr) {
+        public static String replaceOccurrences(HashMap<String, String> hm, String oaistr) {
+            if (null != hm && null != oaistr) {
                 String occurrence = "";
                 String replace = "";
                 Iterator<String> it = hm.keySet().iterator();
@@ -469,6 +733,116 @@ public final class Util {
                 }
             }
             return oaistr;
+        }
+
+        /**
+         * Replaces accented characters and blank spaces in the string given. Makes
+         * the changes in a case sensitive manner, the following are some examples
+         * of the changes this method makes: <br>
+         *
+         * @param txt a string in which the characters are going to be replaced
+         * @param replaceSpaces a {@code boolean} indicating if blank spaces are
+         * going to be replaced or not
+         * @return a string similar to {@code txt} but with neither accented or
+         * special characters nor symbols in it. un objeto string similar a
+         * {@code txt} pero sin caracteres acentuados o especiales y sin
+         * s&iacute;mbolos {@literal Á} is replaced by {@literal A} <br>
+         * {@literal Ê} is replaced by {@literal E} <br> {@literal Ï} is replaced by
+         * {@literal I} <br> {@literal â} is replaced by {@literal a} <br>
+         * {@literal ç} is replaced by {@literal c} <br> {@literal ñ} is replaced by
+         * {@literal n} <br>
+         * and blank spaces are replaced by underscore characters, any symbol in
+         * {@code txt} other than underscore is eliminated including the periods.
+         * <p>
+         * Reemplaza caracteres acentuados y espacios en blanco en {@code txt}.
+         * Realiza los cambios respetando caracteres en may&uacute;sculas o
+         * min&uacute;sculas los caracteres en blanco son reemplazados por guiones
+         * bajos, cualquier s&iacute;mbolo diferente a gui&oacute;n bajo es
+         * eliminado.</p>
+         */
+        public static String replaceSpecialCharacters(String txt, boolean replaceSpaces) {
+            StringBuffer ret = new StringBuffer();
+            String aux = txt;
+            //aux = aux.toLowerCase();
+            aux = aux.replace('Á', 'A');
+            aux = aux.replace('Ä', 'A');
+            aux = aux.replace('Å', 'A');
+            aux = aux.replace('Â', 'A');
+            aux = aux.replace('À', 'A');
+            aux = aux.replace('Ã', 'A');
+
+            aux = aux.replace('É', 'E');
+            aux = aux.replace('Ê', 'E');
+            aux = aux.replace('È', 'E');
+            aux = aux.replace('Ë', 'E');
+
+            aux = aux.replace('Í', 'I');
+            aux = aux.replace('Î', 'I');
+            aux = aux.replace('Ï', 'I');
+            aux = aux.replace('Ì', 'I');
+
+            aux = aux.replace('Ó', 'O');
+            aux = aux.replace('Ö', 'O');
+            aux = aux.replace('Ô', 'O');
+            aux = aux.replace('Ò', 'O');
+            aux = aux.replace('Õ', 'O');
+
+            aux = aux.replace('Ú', 'U');
+            aux = aux.replace('Ü', 'U');
+            aux = aux.replace('Û', 'U');
+            aux = aux.replace('Ù', 'U');
+
+            aux = aux.replace('Ñ', 'N');
+
+            aux = aux.replace('Ç', 'C');
+            aux = aux.replace('Ý', 'Y');
+
+            aux = aux.replace('á', 'a');
+            aux = aux.replace('à', 'a');
+            aux = aux.replace('ã', 'a');
+            aux = aux.replace('â', 'a');
+            aux = aux.replace('ä', 'a');
+            aux = aux.replace('å', 'a');
+
+            aux = aux.replace('é', 'e');
+            aux = aux.replace('è', 'e');
+            aux = aux.replace('ê', 'e');
+            aux = aux.replace('ë', 'e');
+
+            aux = aux.replace('í', 'i');
+            aux = aux.replace('ì', 'i');
+            aux = aux.replace('î', 'i');
+            aux = aux.replace('ï', 'i');
+
+            aux = aux.replace('ó', 'o');
+            aux = aux.replace('ò', 'o');
+            aux = aux.replace('ô', 'o');
+            aux = aux.replace('ö', 'o');
+
+            aux = aux.replace('ú', 'u');
+            aux = aux.replace('ù', 'u');
+            aux = aux.replace('ü', 'u');
+            aux = aux.replace('û', 'u');
+
+            aux = aux.replace('ñ', 'n');
+
+            aux = aux.replace('ç', 'c');
+            aux = aux.replace('ÿ', 'y');
+            aux = aux.replace('ý', 'y');
+
+            if (replaceSpaces) {
+                aux = aux.replace(' ', '_');
+            }
+            int l = aux.length();
+            for (int x = 0; x < l; x++) {
+                char ch = aux.charAt(x);
+                if ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z')
+                        || (ch >= 'A' && ch <= 'Z') || ch == '_' || ch == '-') {
+                    ret.append(ch);
+                }
+            }
+            aux = ret.toString();
+            return aux;
         }
     }
 }
