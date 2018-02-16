@@ -54,7 +54,7 @@ public final class Util {
         StringBuilder response = new StringBuilder();
         String errorMsg = null;
         int retries = 0;
-        boolean isConnOk = false;
+        boolean isConnOk;
 
         do {
             logger.trace("Trying to make request to URL " + theUrl.toString());
@@ -82,9 +82,8 @@ public final class Util {
                         ioex.printStackTrace();
                     }
                 } else {
-                    //throw new ServerErrorException();
+                    logger.debug("Server responded " + statusCode +" for " + theUrl);
                 }
-
             } catch (IOException e) {
                 logger.trace("Failed connection to URL "+theUrl+". Retrying");
                 if (null != con) {
@@ -104,7 +103,7 @@ public final class Util {
                     errorMsg="#Error: No se puede conectar al servidor#";
                 }
             }
-        } while (isConnOk == false && retries < 5);
+        } while (!isConnOk && retries < 5);
         return errorMsg!=null?errorMsg:response.toString();
     }
 
@@ -124,7 +123,7 @@ public final class Util {
     public static final class ELASTICSEARCH {
         public static final String REPO_INDEX = "cultura";
         public static final String REPO_INDEX_TEST = "cultura_test";
-        private static HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
+        private static final HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
 
         /**
          * Gets a {@link RestHighLevelClient} instance with default host and port.
@@ -295,7 +294,7 @@ public final class Util {
      * Inner class to encapsulate methods related to MongoDB actions.
      */
     public static final class MONGODB {
-        private static HashMap<String, MongoClient> mongoClients = new HashMap<>();
+        private static final HashMap<String, MongoClient> mongoClients = new HashMap<>();
 
         /**
          * Gets a {@link MongoClient} instance with default host and port.
@@ -358,22 +357,20 @@ public final class Util {
                                 data.put("value", obj);
                                 DataObject ret = dscoll.fetch(r);
                                 DataList rdata = ret.getDataObject("response").getDataList("data");
-                                DataObject res = null;
+                                DataObject res;
                                 if (!rdata.isEmpty()) {
-                                    String replaceValue = null;
-                                    for (int i = 0; i < rdata.size(); i++) {
-                                        res = rdata.getDataObject(i);  // DataObject de Replace
-                                        if (replaceValue == null) {
-                                            replaceValue = "";
+                                    StringBuilder replaceValue = new StringBuilder();
+                                    Iterator<DataObject> dit = rdata.iterator();
+                                    while (dit.hasNext()) {
+                                        res = dit.next();
+                                        replaceValue.append(res.getString("replace"));
+                                        if (dit.hasNext()) {
+                                            replaceValue.append(",");
                                         }
-                                        if (replaceValue.length() > 0) {
-                                            replaceValue += ",";
-                                        }
-                                        replaceValue += res.getString("replace");
                                     }
-                                    prop.put(next, replaceValue);
+                                    prop.put(next, replaceValue.toString());
                                 } else {
-//                                System.out.println("No se encontró valor "+obj+" en la colección..."+coll2use);
+                                    logger.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
                                 }
                             } catch (Exception e) {
                                 //No se encontró la propiedad con el valor actual
@@ -422,22 +419,22 @@ public final class Util {
                                 data.put("value", obj);
                                 DataObject ret = dscoll.fetch(r);
                                 DataList rdata = ret.getDataObject("response").getDataList("data");
-                                DataObject res = null;
+                                DataObject res;
                                 if (!rdata.isEmpty()) {
-                                    String replaceValue = null;
+                                    StringBuilder replaceValue = null;
                                     for (int i = 0; i < rdata.size(); i++) {
                                         res = rdata.getDataObject(i);  // DataObject de Replace
                                         if (replaceValue == null) {
-                                            replaceValue = "";
+                                            replaceValue = new StringBuilder();
                                         }
                                         if (replaceValue.length() > 0) {
-                                            replaceValue += ",";
+                                            replaceValue.append(",");
                                         }
-                                        replaceValue += res.getString("replace");
+                                        replaceValue.append(res.getString("replace"));
                                     }
-                                    dobj.put(next1, replaceValue);
+                                    dobj.put(next1, replaceValue.toString());
                                 } else {
-                                    //System.out.println("No se encomnró valor "+obj+" en la colección..."+coll2use);
+                                    logger.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
                                 }
                             } catch (Exception e) {
                                 //No se encontró la propiedad con el valor actual
@@ -466,27 +463,22 @@ public final class Util {
                 DataObject doMDef = dsMDef.fetchObjById(extDef.getString("mapDef"));
                 SWBDataSource ds = engine.getDataSource("MapTable");
 
-                if (null != engine && extDef != null) {
-                    try {
-                        DataList dl = doMDef.getDataList("mapTable");
-                        if (null != dl && dl.size() > 0) {
-                            //System.out.println("MapTable");
-                            for (int i = 0; i < dl.size(); i++) {
-                                String llave = dl.getString(i);
-                                DataObject dobj = ds.fetchObjById(llave);
-                                if (null != dobj) {
-                                    //System.out.println("("+dobj.getString("property")+","+dobj.getString("collName")+")");
-                                    hm.put(dobj.getString("property"), dobj.getString("collName"));
-                                }
+                try {
+                    DataList dl = doMDef.getDataList("mapTable");
+                    if (null != dl && dl.size() > 0) {
+                        //System.out.println("MapTable");
+                        for (int i = 0; i < dl.size(); i++) {
+                            String llave = dl.getString(i);
+                            DataObject dobj = ds.fetchObjById(llave);
+                            if (null != dobj) {
+                                //System.out.println("("+dobj.getString("property")+","+dobj.getString("collName")+")");
+                                hm.put(dobj.getString("property"), dobj.getString("collName"));
                             }
                         }
-
-                    } catch (Exception e) {
-                        logger.error("Error al cargar el DataSource. ", e);
                     }
-                } else {
-                    logger.error("Error al cargar el DataSource al HashMap, falta inicializar el engine.");
-                    return null;
+
+                } catch (Exception e) {
+                    logger.error("Error al cargar el DataSource. ", e);
                 }
             } catch (Exception ex) {
                 logger.error(ex);
@@ -505,7 +497,7 @@ public final class Util {
          */
         public static HashMap<String, String> loadOccurrences(SWBScriptEngine engine) {
 
-            SWBDataSource datasource = null;
+            SWBDataSource datasource;
             HashMap<String, String> hm = new HashMap();
 
             if (null != engine) {
@@ -516,11 +508,11 @@ public final class Util {
                     r.put("data", data);
 
                     DataObject ret = datasource.fetch(r);
-                    String occurrence = "";
-                    String replace = "";
+                    String occurrence;
+                    String replace;
 
                     DataList rdata = ret.getDataObject("response").getDataList("data");
-                    DataObject dobj = null;
+                    DataObject dobj;
                     if (!rdata.isEmpty()) {
                         for (int i = 0; i < rdata.size(); i++) {
                             dobj = rdata.getDataObject(i);  // DataObject de Replace
@@ -629,7 +621,7 @@ public final class Util {
          * @return a text in days, hours, minutes, seconds and milliseconds format
          */
         public static String getElapsedTime(long elapsedTime) {
-            String etime = elapsedTime + "ms";
+            String etime;
             long seg = 1000;
             long min = 60 * seg;
             long hr = 60 * min;
@@ -723,8 +715,8 @@ public final class Util {
          */
         public static String replaceOccurrences(HashMap<String, String> hm, String oaistr) {
             if (null != hm && null != oaistr) {
-                String occurrence = "";
-                String replace = "";
+                String occurrence;
+                String replace;
                 Iterator<String> it = hm.keySet().iterator();
                 while (it.hasNext()) {
                     occurrence = it.next();

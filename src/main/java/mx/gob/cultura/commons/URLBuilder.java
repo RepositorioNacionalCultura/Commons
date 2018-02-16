@@ -46,7 +46,7 @@ public interface URLBuilder {
     /**
      * Build URL object from URLBuilder properties
      * @return {@link URL} built with {@link URLBuilder} configuration
-     * @throws MalformedURLException
+     * @throws MalformedURLException if URL is not valid.
      */
     URL build() throws MalformedURLException;
 }

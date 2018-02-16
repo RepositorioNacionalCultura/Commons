@@ -12,7 +12,7 @@ import java.util.TreeMap;
  */
 public class URLBuilderBase implements URLBuilder {
     private String baseURL;
-    private TreeMap<String, String> params;
+    private final TreeMap<String, String> params;
 
     /**
      * Constructor. Creates a new instance of {@link URLBuilderBase}

@@ -13,13 +13,13 @@ public class AppConfig {
     private String envName;
 
     //ES Configuration
-    private String elasticHost;
+    private final String elasticHost;
     private int elasticPort;
     private String indexName;
-    private String indexType;
+    private final String indexType;
 
     //MongoDB Configuration
-    private String mongoHost;
+    private final String mongoHost;
     private int mongoPort;
 
     private static AppConfig instance = null;

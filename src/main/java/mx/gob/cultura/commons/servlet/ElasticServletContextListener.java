@@ -26,7 +26,7 @@ import java.util.Properties;
 public class ElasticServletContextListener implements ServletContextListener {
     private static final Logger logger = Logger.getLogger(ElasticServletContextListener.class);
     private RestHighLevelClient c;
-    AppConfig config;
+    final AppConfig config;
 
     /**
      * Constructor. Creates a new instance of {@link ElasticServletContextListener}.
@@ -51,7 +51,11 @@ public class ElasticServletContextListener implements ServletContextListener {
             try {
                 Response resp = c.getLowLevelClient().performRequest("HEAD", Util.ELASTICSEARCH.REPO_INDEX_TEST);
                 if(resp.getStatusLine().getStatusCode() != RestStatus.OK.getStatus()) {
-                    createESTestIndex();
+                    if (createESTestIndex()) {
+                        logger.trace("Created test index");
+                    } else {
+                        logger.trace("Test index could not be created");
+                    }
                 } else {
                     logger.info("Index "+ Util.ELASTICSEARCH.REPO_INDEX_TEST +" already exists...");
                 }

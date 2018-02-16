@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public class OAIPMHURLBuilder {
     private String baseURL;
-    private URLBuilder builder;
+    private final URLBuilder builder;
 
     /**
      * OAI-PMH accepted verbs.
