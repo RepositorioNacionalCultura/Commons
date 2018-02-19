@@ -612,6 +612,23 @@ public final class Util {
      * Inner class to encapsulate methods related with String manipulation
      */
     public static final class TEXT {
+
+        public static String toStringHtmlEscape(String str){
+            StringBuilder buf=new StringBuilder();
+            int c=0;
+            int i=str.indexOf("\\u",c);
+            while(i>-1)
+            {
+                buf.append(str.substring(c,i));
+                int v=Integer.parseInt(str.substring(i+2,i+6),16);
+                buf.append("&#"+v+";");
+                c=i+6;
+                i=str.indexOf("\\u",c);
+            }
+            buf.append(str.substring(c));
+            return buf.toString();
+        }
+
         /**
          * Format milliseconds long number in days, hours, minutes, seconds and
          * milliseconds
