@@ -19,14 +19,14 @@ public class OAIPMHURLBuilder {
      * OAI-PMH accepted verbs.
      */
     public enum VERB {
-        Identify, ListIdentifiers, ListRecords, ListSets, ListMetadataFormats, GetRecord
+        IDENTIFY, LISTIDENTIFIERS, LISTRECORDS, LISTSETS, LISTMETADATAFORMATS, GETRECORD
     }
 
     /**
      * Commonly used prefixes.
      */
     public enum PREFIX {
-        mods, meds, oai_dc, oai_etdms, ore
+        MODS, MEDS, OAI_DC, OAI_ETDMS, ORE
     }
 
     /**
@@ -110,19 +110,19 @@ public class OAIPMHURLBuilder {
         if (null == verb || verb.isEmpty())
             throw new BadVerbException("Illegal verb");
 
-        if (!hasToken && !hasMetadataPrefix && !verb.equals(VERB.Identify.name()))
+        if (!hasToken && !hasMetadataPrefix && !verb.equals(VERB.IDENTIFY.name()))
             throw new BadArgumentException(verb+" must receive the metadataPrefix");
 
         if (hasToken && hasMetadataPrefix)
             throw new BadArgumentException("ResumptionToken cannot be sent together with from, until, metadataPrefix or set parameters");
 
-        if (verb.equals(VERB.GetRecord.name()) && !hasIdentifier)
+        if (verb.equals(VERB.GETRECORD.name()) && !hasIdentifier)
             throw new BadArgumentException(verb+" verb requires the use of the parameters - identifier and metadataPrefix");
 
-        if (verb.equals(VERB.GetRecord.name()) && hasIdentifier && !hasMetadataPrefix)
+        if (verb.equals(VERB.GETRECORD.name()) && hasIdentifier && !hasMetadataPrefix)
             throw new BadArgumentException(verb+" must receive the metadataPrefix");
 
-        if (verb.equals(VERB.GetRecord.name()) && hasToken) {
+        if (verb.equals(VERB.GETRECORD.name()) && hasToken) {
             throw new BadArgumentException("ResumptionToken cannot be sent together with verb "+verb);
         }
 

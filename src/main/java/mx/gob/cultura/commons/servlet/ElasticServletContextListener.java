@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
 
 /**
@@ -24,7 +23,7 @@ import java.util.Properties;
  * @author Hasdai Pacheco
  */
 public class ElasticServletContextListener implements ServletContextListener {
-    private static final Logger logger = Logger.getLogger(ElasticServletContextListener.class);
+    private static final Logger LOGGER = Logger.getLogger(ElasticServletContextListener.class);
     private RestHighLevelClient c;
     final AppConfig config;
 
@@ -42,25 +41,25 @@ public class ElasticServletContextListener implements ServletContextListener {
         //Remove test index if env is production
         if (Util.ENV_PRODUCTION.equals(config.getEnvName())) {
             try {
-                logger.trace("Removing test index...");
+                LOGGER.trace("Removing test index...");
                 c.getLowLevelClient().performRequest("DELETE", Util.ELASTICSEARCH.REPO_INDEX_TEST);
             } catch (IOException ioex) {
-                logger.info("Test index was not removed");
+                LOGGER.info("Test index was not removed");
             }
         } else {
             try {
                 Response resp = c.getLowLevelClient().performRequest("HEAD", Util.ELASTICSEARCH.REPO_INDEX_TEST);
                 if(resp.getStatusLine().getStatusCode() != RestStatus.OK.getStatus()) {
                     if (createESTestIndex()) {
-                        logger.trace("Created test index");
+                        LOGGER.trace("Created test index");
                     } else {
-                        logger.trace("Test index could not be created");
+                        LOGGER.trace("Test index could not be created");
                     }
                 } else {
-                    logger.info("Index "+ Util.ELASTICSEARCH.REPO_INDEX_TEST +" already exists...");
+                    LOGGER.info("Index "+ Util.ELASTICSEARCH.REPO_INDEX_TEST +" already exists...");
                 }
             } catch (IOException ioex) {
-                ioex.printStackTrace();
+                LOGGER.error(ioex);
             }
         }
     }
@@ -83,7 +82,7 @@ public class ElasticServletContextListener implements ServletContextListener {
             try {
                 props.load(is);
             } catch (IOException ioex) {
-                logger.error("Error loading properties file", ioex);
+                LOGGER.error("Error loading properties file", ioex);
             }
         }
 
@@ -96,7 +95,7 @@ public class ElasticServletContextListener implements ServletContextListener {
      */
     private boolean createESTestIndex() {
         boolean ret = false;
-        logger.trace("Creating index "+ Util.ELASTICSEARCH.REPO_INDEX_TEST +"...");
+        LOGGER.trace("Creating index "+ Util.ELASTICSEARCH.REPO_INDEX_TEST +"...");
         InputStream is = getClass().getClassLoader().getResourceAsStream("indexmapping_cultura.json");
         if (null != is) {
             String mapping = Util.FILE.readFromStream(is, StandardCharsets.UTF_8.name());
@@ -108,7 +107,7 @@ public class ElasticServletContextListener implements ServletContextListener {
             ret = Util.ELASTICSEARCH.createIndex(c, Util.ELASTICSEARCH.REPO_INDEX_TEST, mp.toString());
 
             if (ret) {
-                logger.info("Index " + Util.ELASTICSEARCH.REPO_INDEX_TEST + " created with alias "+ config.getIndexName());
+                LOGGER.info("Index " + Util.ELASTICSEARCH.REPO_INDEX_TEST + " created with alias "+ config.getIndexName());
             }
         }
 
@@ -121,17 +120,17 @@ public class ElasticServletContextListener implements ServletContextListener {
 
                 try {
                     JSONArray data = new JSONArray(jsonString);
-                    logger.trace("Loading "+ data.length() +" objects from test data");
+                    LOGGER.trace("Loading "+ data.length() +" objects from test data");
                     for (int i = 0; i < data.length(); i++) {
                         JSONObject o = data.getJSONObject(i);
                         o.put("indexcreated", System.currentTimeMillis());
                         objs.add(o.toString());
                     }
                 } catch (JSONException jsex) {
-                    logger.error("Unable to load sample data", jsex);
+                    LOGGER.error("Unable to load sample data", jsex);
                 }
 
-                List<String> indexed = Util.ELASTICSEARCH.indexObjects(c, Util.ELASTICSEARCH.REPO_INDEX_TEST, config.getIndexType(), objs);
+                Util.ELASTICSEARCH.indexObjects(c, Util.ELASTICSEARCH.REPO_INDEX_TEST, config.getIndexType(), objs);
             }
         }
         return ret;

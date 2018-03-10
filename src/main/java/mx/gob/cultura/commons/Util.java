@@ -41,7 +41,7 @@ import java.util.Map;
  * @author Hasdai Pacheco
  */
 public final class Util {
-    private static final Logger logger = Logger.getLogger(Util.class);
+    private static final Logger LOGGER = Logger.getLogger(Util.class);
     public static final String ENV_DEVELOPMENT = "DEV";
     public static final String ENV_TESTING = "TEST";
     public static final String ENV_QA = "QA";
@@ -49,7 +49,7 @@ public final class Util {
 
     private Util() { }
 
-    public static String makeRequest(URL theUrl, boolean XMLSupport) {
+    public static String makeRequest(URL theUrl, boolean xmlSupport) {
         HttpURLConnection con = null;
         StringBuilder response = new StringBuilder();
         String errorMsg = null;
@@ -57,18 +57,16 @@ public final class Util {
         boolean isConnOk;
 
         do {
-            logger.trace("Trying to make request to URL " + theUrl.toString());
+            LOGGER.trace("Trying to make request to URL " + theUrl.toString());
             try {
                 con = (HttpURLConnection) theUrl.openConnection();
                 isConnOk = true;
                 //AQUI SE PIDE EN XML
-                if (XMLSupport) {
-                    logger.trace("Setting XML request header");
+                if (xmlSupport) {
+                    LOGGER.trace("Setting XML request header");
                     con.setRequestProperty("accept", "application/xml");
                 }
                 con.setRequestMethod("GET");
-                //System.out.println("content type:" + con.getContentType());
-
                 int statusCode = con.getResponseCode();
 
                 if (statusCode == 200) {
@@ -79,13 +77,13 @@ public final class Util {
                             response.append(inputLine);
                         }
                     } catch (IOException ioex) {
-                        ioex.printStackTrace();
+                        LOGGER.error(ioex);
                     }
                 } else {
-                    logger.debug("Server responded " + statusCode +" for " + theUrl);
+                    LOGGER.debug("Server responded " + statusCode +" for " + theUrl);
                 }
             } catch (IOException e) {
-                logger.trace("Failed connection to URL "+theUrl+". Retrying");
+                LOGGER.trace("Failed connection to URL "+theUrl+". Retrying");
                 if (null != con) {
                     con.disconnect();
                 }
@@ -93,13 +91,12 @@ public final class Util {
                 try {
                     Thread.sleep(5000);
                 } catch (Exception te) {
-                    te.printStackTrace();
+                    LOGGER.error(te);
                 }
 
-                //e.printStackTrace();
                 isConnOk = false;
                 if(retries==5){
-                    logger.trace("Max number of retries reached ("+retries+")");
+                    LOGGER.trace("Max number of retries reached ("+retries+")");
                     errorMsg="#Error: No se puede conectar al servidor#";
                 }
             }
@@ -125,6 +122,8 @@ public final class Util {
         public static final String REPO_INDEX_TEST = "cultura_test";
         private static final HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
 
+        private ELASTICSEARCH() {}
+
         /**
          * Gets a {@link RestHighLevelClient} instance with default host and port.
          *
@@ -142,12 +141,12 @@ public final class Util {
          * @return RestHighLevelClient instance object.
          */
         public static RestHighLevelClient getElasticClient(String host, int port) {
-            RestHighLevelClient ret = elasticClients.get(host + ":" + String.valueOf(port));
+            RestHighLevelClient ret = elasticClients.get(host + ":" + port);
             if (null == ret) {
                 ret = new RestHighLevelClient(
                         RestClient.builder(new HttpHost(host, port)));
 
-                elasticClients.put(host + ":" + String.valueOf(port), ret);
+                elasticClients.put(host + ":" + port, ret);
             }
             return ret;
         }
@@ -158,13 +157,13 @@ public final class Util {
          * @param port Port number of client
          */
         public static void closeElasticClient(String host, int port) {
-            RestHighLevelClient ret = elasticClients.get(host + ":" + String.valueOf(port));
+            RestHighLevelClient ret = elasticClients.get(host + ":" + port);
             if (null != ret) {
                 try {
                     ret.close();
-                    elasticClients.remove(host + ":" + String.valueOf(port), ret);
+                    elasticClients.remove(host + ":" + port, ret);
                 } catch (IOException ioex) {
-                    logger.error("Error while closing ES client", ioex);
+                    LOGGER.error("Error while closing ES client", ioex);
                 }
             }
         }
@@ -177,7 +176,7 @@ public final class Util {
                 try {
                     c.close();
                 } catch (IOException ioex) {
-                    logger.error("Error while closing ES clients", ioex);
+                    LOGGER.error("Error while closing ES clients", ioex);
                 }
             }
         }
@@ -217,7 +216,7 @@ public final class Util {
                     ret = resp.getId();
                 }
             } catch (IOException ioex) {
-                logger.error("Error making index request for object with id "+objectId, ioex);
+                LOGGER.error("Error making index request for object with id "+objectId, ioex);
             }
 
             return ret;
@@ -254,7 +253,7 @@ public final class Util {
                         }
                     }
                 } catch (IOException ioex) {
-                    logger.error("Error indexing objects in bulk request", ioex);
+                    LOGGER.error("Error indexing objects in bulk request", ioex);
                 }
             }
             return ret;
@@ -284,7 +283,7 @@ public final class Util {
                 Response resp = client.getLowLevelClient().performRequest("PUT", "/"+ indexName, params, body);
                 ret = resp.getStatusLine().getStatusCode() == RestStatus.OK.getStatus();
             } catch (IOException ioex) {
-                logger.error("Error creating index "+indexName, ioex);
+                LOGGER.error("Error creating index "+indexName, ioex);
             }
             return ret;
         }
@@ -295,6 +294,8 @@ public final class Util {
      */
     public static final class MONGODB {
         private static final HashMap<String, MongoClient> mongoClients = new HashMap<>();
+
+        private MONGODB () {}
 
         /**
          * Gets a {@link MongoClient} instance with default host and port.
@@ -313,10 +314,10 @@ public final class Util {
          * @return MongoClient instance object.
          */
         public static MongoClient getMongoClient(String host, int port) {
-            MongoClient ret = mongoClients.get(host + ":" + String.valueOf(port));
+            MongoClient ret = mongoClients.get(host + ":" + port);
             if (null == ret) {
                 ret = new MongoClient(host, port);
-                mongoClients.put(host + ":" + String.valueOf(port), ret);
+                mongoClients.put(host + ":" + port, ret);
             }
 
             return ret;
@@ -327,6 +328,9 @@ public final class Util {
      * Inner class to encapsulate methods related to SWBForms DataManager actions.
      */
     public static final class SWBForms {
+
+        private SWBForms () {}
+
         /**
          * Carga en el hm todas las propiedades del DataObject
          *
@@ -370,11 +374,11 @@ public final class Util {
                                     }
                                     prop.put(next, replaceValue.toString());
                                 } else {
-                                    logger.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
+                                    LOGGER.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
                                 }
                             } catch (Exception e) {
                                 //No se encontró la propiedad con el valor actual
-                                logger.error("Error al buscar el valor en la colección", e);
+                                LOGGER.error("Error al buscar el valor en la colección", e);
                             }
                         }
                     }
@@ -404,7 +408,6 @@ public final class Util {
                 } else {
                     //buscar y actualizar propiedad
                     //buscar propiedad en el hashmap
-//                System.out.println("Buscando propiedad en HM "+next1);
                     next1 = next1.trim();
                     if (collection.get(next1) != null) {
                         // Sólo puede tener un valor
@@ -421,12 +424,9 @@ public final class Util {
                                 DataList rdata = ret.getDataObject("response").getDataList("data");
                                 DataObject res;
                                 if (!rdata.isEmpty()) {
-                                    StringBuilder replaceValue = null;
+                                    StringBuilder replaceValue = new StringBuilder();
                                     for (int i = 0; i < rdata.size(); i++) {
                                         res = rdata.getDataObject(i);  // DataObject de Replace
-                                        if (replaceValue == null) {
-                                            replaceValue = new StringBuilder();
-                                        }
                                         if (replaceValue.length() > 0) {
                                             replaceValue.append(",");
                                         }
@@ -434,19 +434,17 @@ public final class Util {
                                     }
                                     dobj.put(next1, replaceValue.toString());
                                 } else {
-                                    logger.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
+                                    LOGGER.debug("No se encontró valor " + obj + " en la colección..." + coll2use);
                                 }
                             } catch (Exception e) {
                                 //No se encontró la propiedad con el valor actual
-                                logger.error("Error al buscar el valor en la colección", e);
+                                LOGGER.error("Error al buscar el valor en la colección", e);
                             }
 
                         }
                     }
-                    //hm.put(next1, next1);
                 }
             }
-//        return hm;
         }
 
         /**
@@ -457,33 +455,37 @@ public final class Util {
          * @return HashMap con DataSource cargado en memoria.
          */
         public static HashMap<String, String> loadExtractorMapTable(SWBScriptEngine engine, DataObject extDef) {
-            HashMap<String, String> hm = new HashMap();
-            try {
-                SWBDataSource dsMDef = engine.getDataSource("MapDefinition");
-                DataObject doMDef = dsMDef.fetchObjById(extDef.getString("mapDef"));
-                SWBDataSource ds = engine.getDataSource("MapTable");
+            HashMap<String, String> hm = new HashMap<>();
+            SWBDataSource ds = engine.getDataSource("MapTable");
+            SWBDataSource dsMDef = engine.getDataSource("MapDefinition");
+            DataObject doMDef = null;
 
+            if (null != dsMDef) {
                 try {
+                    doMDef = dsMDef.fetchObjById(extDef.getString("mapDef"));
+                } catch (IOException e) {
+                    LOGGER.error("Failed to get map definition", e);
+                }
+
+                if (null != doMDef) {
                     DataList dl = doMDef.getDataList("mapTable");
-                    if (null != dl && dl.size() > 0) {
-                        //System.out.println("MapTable");
+                    if (null != dl && !dl.isEmpty()) {
                         for (int i = 0; i < dl.size(); i++) {
                             String llave = dl.getString(i);
-                            DataObject dobj = ds.fetchObjById(llave);
+                            DataObject dobj = null;
+                            try {
+                                dobj = ds.fetchObjById(llave);
+                            } catch (IOException e) {
+                                LOGGER.error("Failed to fetch tablemap definition", e);
+                            }
+
                             if (null != dobj) {
-                                //System.out.println("("+dobj.getString("property")+","+dobj.getString("collName")+")");
                                 hm.put(dobj.getString("property"), dobj.getString("collName"));
                             }
                         }
                     }
-
-                } catch (Exception e) {
-                    logger.error("Error al cargar el DataSource. ", e);
                 }
-            } catch (Exception ex) {
-                logger.error(ex);
             }
-
             return hm;
         }
 
@@ -498,7 +500,7 @@ public final class Util {
         public static HashMap<String, String> loadOccurrences(SWBScriptEngine engine) {
 
             SWBDataSource datasource;
-            HashMap<String, String> hm = new HashMap();
+            HashMap<String, String> hm = new HashMap<>();
 
             if (null != engine) {
                 try {
@@ -522,10 +524,10 @@ public final class Util {
                         }
                     }
                 } catch (Exception e) {
-                    logger.error("Error al cargar el DataSource. ", e);
+                    LOGGER.error("Error al cargar el DataSource. ", e);
                 }
             } else {
-                logger.error("Error al cargar el DataSource al HashMap, falta inicializar el engine.");
+                LOGGER.error("Error al cargar el DataSource al HashMap, falta inicializar el engine.");
                 return null;
             }
 
@@ -581,6 +583,8 @@ public final class Util {
      */
     public static final class FILE {
 
+        private FILE() {}
+
         /**
          * Reads {@link java.io.InputStream} content as a {@link String}
          * @param fis {@link FileInputStream} to read from
@@ -601,7 +605,7 @@ public final class Util {
                     ret.append(line);
                 }
             } catch (IOException ioex) {
-                logger.error("Error reading file", ioex);
+                LOGGER.error("Error reading file", ioex);
             }
 
             return ret.toString();
@@ -613,6 +617,8 @@ public final class Util {
      */
     public static final class TEXT {
 
+        private TEXT() {}
+
         public static String toStringHtmlEscape(String str){
             StringBuilder buf=new StringBuilder();
             int c=0;
@@ -621,7 +627,7 @@ public final class Util {
             {
                 buf.append(str.substring(c,i));
                 int v=Integer.parseInt(str.substring(i+2,i+6),16);
-                buf.append("&#"+v+";");
+                buf.append("&#").append(v).append(";");
                 c=i+6;
                 i=str.indexOf("\\u",c);
             }
@@ -653,9 +659,9 @@ public final class Util {
             if (elapsedTime > day) {
                 ndays = elapsedTime / day;
                 if (ndays > 0 && (elapsedTime % day) > 0) {
-                    nhr = ((elapsedTime % day)) / hr;
+                    nhr = (elapsedTime % day) / hr;
                 }
-                if (nhr > 0 && (((elapsedTime % day)) % hr) > 0) {
+                if (nhr > 0 && ((elapsedTime % day) % hr) > 0) {
                     nmin = ((elapsedTime % day) % hr) / min;
                 }
                 if (nmin > 0 && (((elapsedTime % day) % hr) % min) > 0) {
@@ -679,9 +685,9 @@ public final class Util {
             } else if (elapsedTime > min) {
                 nmin = elapsedTime / min;
                 if (nmin > 0 && (elapsedTime % min) > 0) {
-                    nseg = ((elapsedTime % min)) / seg;
+                    nseg = (elapsedTime % min) / seg;
                 }
-                if (nseg > 0 && (((elapsedTime % min) % seg)) > 0) {
+                if (nseg > 0 && ((elapsedTime % min) % seg) > 0) {
                     nms = ((elapsedTime % min) % seg);
                 }
 
@@ -770,9 +776,8 @@ public final class Util {
          * eliminado.</p>
          */
         public static String replaceSpecialCharacters(String txt, boolean replaceSpaces) {
-            StringBuffer ret = new StringBuffer();
+            StringBuilder ret = new StringBuilder();
             String aux = txt;
-            //aux = aux.toLowerCase();
             aux = aux.replace('Á', 'A');
             aux = aux.replace('Ä', 'A');
             aux = aux.replace('Å', 'A');

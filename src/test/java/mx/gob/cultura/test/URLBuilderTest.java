@@ -7,18 +7,17 @@ import org.apache.log4j.Logger;
 import java.net.MalformedURLException;
 
 public class URLBuilderTest {
-    static final Logger lg = Logger.getLogger(URLBuilderTest.class);
+    private static final Logger LG = Logger.getLogger(URLBuilderTest.class);
     public static void main(String []args) {
         OAIPMHURLBuilder builder = new OAIPMHURLBuilder("http://localhost:9090/");
 
-        builder.setVerb(OAIPMHURLBuilder.VERB.ListRecords);
-        builder.setPrefix(OAIPMHURLBuilder.PREFIX.meds);
+        builder.setVerb(OAIPMHURLBuilder.VERB.LISTRECORDS);
+        builder.setPrefix(OAIPMHURLBuilder.PREFIX.MEDS);
         try {
-            //System.out.printf(builder.build().toString());
-            lg.error(builder.build().toString());
+            LG.error(builder.build().toString());
             Util.makeRequest(builder.build(), true);
         } catch (MalformedURLException mfe) {
-mfe.printStackTrace();
+            LG.error(mfe);
         }
     }
 }
