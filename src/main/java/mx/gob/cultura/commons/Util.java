@@ -34,6 +34,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import org.elasticsearch.action.update.UpdateRequest;
+import org.elasticsearch.action.update.UpdateResponse;
 
 /**
  * Utility class with common methods.
@@ -72,7 +74,7 @@ public final class Util {
                 int statusCode = con.getResponseCode();
 
                 if (statusCode == 200) {
-                    try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+                    try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream(), "UTF-8"))) {
                         String inputLine;
 
                         while ((inputLine = in.readLine()) != null) {
@@ -82,10 +84,10 @@ public final class Util {
                         ioex.printStackTrace();
                     }
                 } else {
-                    logger.debug("Server responded " + statusCode +" for " + theUrl);
+                    logger.debug("Server responded " + statusCode + " for " + theUrl);
                 }
             } catch (IOException e) {
-                logger.trace("Failed connection to URL "+theUrl+". Retrying");
+                logger.trace("Failed connection to URL " + theUrl + ". Retrying");
                 if (null != con) {
                     con.disconnect();
                 }
@@ -98,22 +100,26 @@ public final class Util {
 
                 //e.printStackTrace();
                 isConnOk = false;
-                if(retries==5){
-                    logger.trace("Max number of retries reached ("+retries+")");
-                    errorMsg="#Error: No se puede conectar al servidor#";
+                if (retries == 5) {
+                    logger.trace("Max number of retries reached (" + retries + ")");
+                    errorMsg = "#Error: No se puede conectar al servidor#";
                 }
             }
         } while (!isConnOk && retries < 5);
-        return errorMsg!=null?errorMsg:response.toString();
+        return errorMsg != null ? errorMsg : response.toString();
     }
 
     /**
      * Gets environment configuration.
-     * @return Value of REPO_DEVENV environment property. Defaults to production.
+     *
+     * @return Value of REPO_DEVENV environment property. Defaults to
+     * production.
      */
     public static String getEnvironmentName() {
         String env = System.getenv("REPO_DEVENV");
-        if (null == env) env = ENV_PRODUCTION;
+        if (null == env) {
+            env = ENV_PRODUCTION;
+        }
         return env;
     }
 
@@ -126,7 +132,8 @@ public final class Util {
         private static final HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
 
         /**
-         * Gets a {@link RestHighLevelClient} instance with default host and port.
+         * Gets a {@link RestHighLevelClient} instance with default host and
+         * port.
          *
          * @return RestHighLevelClient instance object.
          */
@@ -145,8 +152,8 @@ public final class Util {
             RestHighLevelClient ret = elasticClients.get(host + ":" + String.valueOf(port));
             if (null == ret) {
                 ret = new RestHighLevelClient(
-                        RestClient.builder(new HttpHost(host, port)));
-
+                        RestClient.builder(new HttpHost(host, port,"http")));
+                
                 elasticClients.put(host + ":" + String.valueOf(port), ret);
             }
             return ret;
@@ -212,12 +219,12 @@ public final class Util {
 
             try {
                 IndexResponse resp = client.index(req);
-                if (resp.status().getStatus() == RestStatus.CREATED.getStatus() ||
-                        resp.status().getStatus() == RestStatus.OK.getStatus()) {
+                if (resp.status().getStatus() == RestStatus.CREATED.getStatus()
+                        || resp.status().getStatus() == RestStatus.OK.getStatus()) {
                     ret = resp.getId();
                 }
             } catch (IOException ioex) {
-                logger.error("Error making index request for object with id "+objectId, ioex);
+                logger.error("Error making index request for object with id " + objectId, ioex);
             }
 
             return ret;
@@ -247,8 +254,8 @@ public final class Util {
                         DocWriteResponse r = itemResponse.getResponse();
                         if (itemResponse.getOpType() == DocWriteRequest.OpType.INDEX || itemResponse.getOpType() == DocWriteRequest.OpType.CREATE) {
                             IndexResponse indexResponse = (IndexResponse) r;
-                            if (indexResponse.status().getStatus() == RestStatus.CREATED.getStatus() ||
-                                    indexResponse.status().getStatus() == RestStatus.OK.getStatus()) {
+                            if (indexResponse.status().getStatus() == RestStatus.CREATED.getStatus()
+                                    || indexResponse.status().getStatus() == RestStatus.OK.getStatus()) {
                                 ret.add(indexResponse.getId());
                             }
                         }
@@ -259,6 +266,59 @@ public final class Util {
             }
             return ret;
         }
+
+        /**
+         *
+         * @param client {@link RestHighLevelClient} object.
+         * @param indexName Index name
+         * @param typeName Property type name
+         * @param oId Object identifier
+         * @param json Object with updated information
+         * @return Id of the updated object
+         */
+        public static String updateObject(RestHighLevelClient client, String indexName, String typeName, String oId, String json) {
+            String ret = "";
+            if (null != oId && !oId.isEmpty()) {
+                UpdateRequest req = new UpdateRequest(indexName, typeName, oId);
+                req.doc(json);
+
+                try {
+                    UpdateResponse resp = client.update(req);
+                    if (resp.getResult() == DocWriteResponse.Result.UPDATED) {
+                        ret = resp.getId();
+                    }
+                } catch (IOException ioex) {
+                    logger.error(ioex);
+                }
+            }
+
+            return ret;
+        }
+
+        /**
+         * Deletes objects by holder name
+         *
+         * @param holder Holder's name
+         * @return number of deleted records
+         */
+//        public static long deleteObjectsByHolder(String holder) {
+//            long deleted = -1;
+//            try {
+//                System.out.println("deleteObjectsByHolder");
+//                TransportClient client = new PreBuiltTransportClient(Settings.EMPTY)
+//                        .addTransportAddress(new TransportAddress(InetAddress.getByName("localhost"), 9300));
+//                BulkByScrollResponse response = DeleteByQueryAction.INSTANCE.newRequestBuilder(client)
+//                        .filter(QueryBuilders.matchQuery("holder", holder))
+//                        .source("bic")
+//                        .get();
+//                deleted = response.getDeleted();
+//            } catch (UnknownHostException uhe) {
+//                logger.error(uhe);
+//                System.out.println(uhe.toString());
+//            }
+//            System.out.println(deleted);
+//            return deleted;
+//        }
 
         /**
          * Gets index name to work with according to environment configuration.
@@ -281,10 +341,10 @@ public final class Util {
             HashMap<String, String> params = new HashMap<>();
 
             try {
-                Response resp = client.getLowLevelClient().performRequest("PUT", "/"+ indexName, params, body);
+                Response resp = client.getLowLevelClient().performRequest("PUT", "/" + indexName, params, body);
                 ret = resp.getStatusLine().getStatusCode() == RestStatus.OK.getStatus();
             } catch (IOException ioex) {
-                logger.error("Error creating index "+indexName, ioex);
+                logger.error("Error creating index " + indexName, ioex);
             }
             return ret;
         }
@@ -385,8 +445,8 @@ public final class Util {
         /**
          * MApeo de propiedades definidas en el DataObject transformado
          *
-         * @param dobj DataObject para revisar propiedades y mapearlas en relación a
-         * la tabla de mapeo definida en el mismo extractor
+         * @param dobj DataObject para revisar propiedades y mapearlas en
+         * relación a la tabla de mapeo definida en el mismo extractor
          * @param collection Tabla de mapeo cargada en un HashMap<String,String>
          * definida en el extractor
          * @param engine, para obtener el dataSource de la colección en donde se
@@ -452,8 +512,8 @@ public final class Util {
         /**
          * Carga la colección de Replace a un HashMap<ocurrencia, reemplazo>
          *
-         * @param engine Utilizado para poder cargar la colección de Replace en un
-         * HashMap
+         * @param engine Utilizado para poder cargar la colección de Replace en
+         * un HashMap
          * @return HashMap con DataSource cargado en memoria.
          */
         public static HashMap<String, String> loadExtractorMapTable(SWBScriptEngine engine, DataObject extDef) {
@@ -491,8 +551,8 @@ public final class Util {
         /**
          * Carga la colección de Replace a un HashMap<ocurrencia, reemplazo>
          *
-         * @param engine Utilizado para poder cargar la colección de Replace en un
-         * HashMap
+         * @param engine Utilizado para poder cargar la colección de Replace en
+         * un HashMap
          * @return HashMap con DataSource cargado en memoria.
          */
         public static HashMap<String, String> loadOccurrences(SWBScriptEngine engine) {
@@ -533,7 +593,9 @@ public final class Util {
         }
 
         /**
-         * Converts a {@link BasicDBObject} into a MongoDB {@link com.mongodb.DBObject}
+         * Converts a {@link BasicDBObject} into a MongoDB
+         * {@link com.mongodb.DBObject}
+         *
          * @param obj {@link DataObject} to transform
          * @return BasicDBObject
          */
@@ -613,17 +675,16 @@ public final class Util {
      */
     public static final class TEXT {
 
-        public static String toStringHtmlEscape(String str){
-            StringBuilder buf=new StringBuilder();
-            int c=0;
-            int i=str.indexOf("\\u",c);
-            while(i>-1)
-            {
-                buf.append(str.substring(c,i));
-                int v=Integer.parseInt(str.substring(i+2,i+6),16);
-                buf.append("&#"+v+";");
-                c=i+6;
-                i=str.indexOf("\\u",c);
+        public static String toStringHtmlEscape(String str) {
+            StringBuilder buf = new StringBuilder();
+            int c = 0;
+            int i = str.indexOf("\\u", c);
+            while (i > -1) {
+                buf.append(str.substring(c, i));
+                int v = Integer.parseInt(str.substring(i + 2, i + 6), 16);
+                buf.append("&#" + v + ";");
+                c = i + 6;
+                i = str.indexOf("\\u", c);
             }
             buf.append(str.substring(c));
             return buf.toString();
@@ -633,9 +694,10 @@ public final class Util {
          * Format milliseconds long number in days, hours, minutes, seconds and
          * milliseconds
          *
-         * @param elapsedTime time to determinate in days, hours, minutes, seconds
-         * and milliseconds takes.
-         * @return a text in days, hours, minutes, seconds and milliseconds format
+         * @param elapsedTime time to determinate in days, hours, minutes,
+         * seconds and milliseconds takes.
+         * @return a text in days, hours, minutes, seconds and milliseconds
+         * format
          */
         public static String getElapsedTime(long elapsedTime) {
             String etime;
@@ -726,7 +788,8 @@ public final class Util {
         /**
          * Reemplaza las ocurrencias en el string recibido
          *
-         * @param hm HashMap con las ocurrencias y su reemplazo previamente cargado
+         * @param hm HashMap con las ocurrencias y su reemplazo previamente
+         * cargado
          * @param oaistr Stream del registro OAI a revisar
          * @return String con todas las ocurrencias reemplazadas.
          */
@@ -745,9 +808,9 @@ public final class Util {
         }
 
         /**
-         * Replaces accented characters and blank spaces in the string given. Makes
-         * the changes in a case sensitive manner, the following are some examples
-         * of the changes this method makes: <br>
+         * Replaces accented characters and blank spaces in the string given.
+         * Makes the changes in a case sensitive manner, the following are some
+         * examples of the changes this method makes: <br>
          *
          * @param txt a string in which the characters are going to be replaced
          * @param replaceSpaces a {@code boolean} indicating if blank spaces are
@@ -756,18 +819,19 @@ public final class Util {
          * special characters nor symbols in it. un objeto string similar a
          * {@code txt} pero sin caracteres acentuados o especiales y sin
          * s&iacute;mbolos {@literal Á} is replaced by {@literal A} <br>
-         * {@literal Ê} is replaced by {@literal E} <br> {@literal Ï} is replaced by
-         * {@literal I} <br> {@literal â} is replaced by {@literal a} <br>
-         * {@literal ç} is replaced by {@literal c} <br> {@literal ñ} is replaced by
-         * {@literal n} <br>
+         * {@literal Ê} is replaced by {@literal E} <br> {@literal Ï} is
+         * replaced by {@literal I} <br> {@literal â} is replaced by
+         * {@literal a} <br> {@literal ç} is replaced by {@literal c} <br>
+         * {@literal ñ} is replaced by {@literal n} <br>
          * and blank spaces are replaced by underscore characters, any symbol in
-         * {@code txt} other than underscore is eliminated including the periods.
+         * {@code txt} other than underscore is eliminated including the
+         * periods.
          * <p>
          * Reemplaza caracteres acentuados y espacios en blanco en {@code txt}.
          * Realiza los cambios respetando caracteres en may&uacute;sculas o
-         * min&uacute;sculas los caracteres en blanco son reemplazados por guiones
-         * bajos, cualquier s&iacute;mbolo diferente a gui&oacute;n bajo es
-         * eliminado.</p>
+         * min&uacute;sculas los caracteres en blanco son reemplazados por
+         * guiones bajos, cualquier s&iacute;mbolo diferente a gui&oacute;n bajo
+         * es eliminado.</p>
          */
         public static String replaceSpecialCharacters(String txt, boolean replaceSpaces) {
             StringBuffer ret = new StringBuffer();
