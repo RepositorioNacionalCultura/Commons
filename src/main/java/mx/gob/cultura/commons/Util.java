@@ -3,6 +3,7 @@ package mx.gob.cultura.commons;
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
+import com.mongodb.util.JSON;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.entity.ContentType;
@@ -34,22 +35,38 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Properties;
+import java.util.logging.Level;
+import mx.gob.cultura.commons.config.AppConfig;
+import org.elasticsearch.action.get.GetRequest;
+import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.json.JSONObject;
+import org.json.XML;
 
 /**
  * Utility class with common methods.
  *
- * @author Hasdai Pacheco
+ * @author Hasdai Pacheco | Juan Antonio Fernandez
  */
 public final class Util {
+
     private static final Logger logger = Logger.getLogger(Util.class);
     public static final String ENV_DEVELOPMENT = "DEV";
     public static final String ENV_TESTING = "TEST";
     public static final String ENV_QA = "QA";
     public static final String ENV_PRODUCTION = "PROD";
 
-    private Util() { }
+    private Util() {
+    }
 
     public static String makeRequest(URL theUrl, boolean XMLSupport) {
         HttpURLConnection con = null;
@@ -127,9 +144,21 @@ public final class Util {
      * Inner class to encapsulate methods related to ElasticSearch actions.
      */
     public static final class ELASTICSEARCH {
-        public static final String REPO_INDEX = "cultura";
-        public static final String REPO_INDEX_TEST = "cultura_test";
+
+        public static String REPO_INDEX = "cultura";
+        public static String REPO_INDEX_TEST = "cultura_test";
+        public static String REPO_TYPE = "bic";
+        public static String ELASTIC_SERVER;
+        public static int ELASTIC_PORT;
+
         private static final HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
+
+        public ELASTICSEARCH() {
+            REPO_INDEX = AppConfig.getConfigObject().getIndexName();
+            REPO_TYPE = AppConfig.getConfigObject().getIndexType();
+            ELASTIC_SERVER = AppConfig.getConfigObject().getElasticHost();
+            ELASTIC_PORT = AppConfig.getConfigObject().getElasticPort();
+        }
 
         /**
          * Gets a {@link RestHighLevelClient} instance with default host and
@@ -138,7 +167,8 @@ public final class Util {
          * @return RestHighLevelClient instance object.
          */
         public static RestHighLevelClient getElasticClient() {
-            return getElasticClient("localhost", 9200);
+
+            return getElasticClient(ELASTIC_SERVER, ELASTIC_PORT);
         }
 
         /**
@@ -152,15 +182,18 @@ public final class Util {
             RestHighLevelClient ret = elasticClients.get(host + ":" + String.valueOf(port));
             if (null == ret) {
                 ret = new RestHighLevelClient(
-                        RestClient.builder(new HttpHost(host, port,"http")));
-                
+                        RestClient.builder(new HttpHost(host, port, "http")));
+
                 elasticClients.put(host + ":" + String.valueOf(port), ret);
             }
             return ret;
         }
 
         /**
-         * Closes an ElasticSearch {@link RestHighLevelClient} associated with @host and @port.
+         * Closes an ElasticSearch {@link RestHighLevelClient} associated with
+         *
+         * @host and @port.
+         *
          * @param host Hostname of client
          * @param port Port number of client
          */
@@ -191,6 +224,7 @@ public final class Util {
 
         /**
          * Gets time-based UUID for indexing objects.
+         *
          * @return String representation of a time-based UUID.
          */
         public static String getUUID() {
@@ -199,6 +233,7 @@ public final class Util {
 
         /**
          * Indexes an object in ElasticSearch.
+         *
          * @param client {@link RestHighLevelClient} object.
          * @param indexName Name of index to use.
          * @param typeName Name of type in index.
@@ -231,7 +266,97 @@ public final class Util {
         }
 
         /**
+         * Search on Index by _id parameter value
+         *
+         * @param client ElasticSearch Client
+         * @param indexName Name of index to use.
+         * @param typeName Name of type in index.
+         * @param objectId ID for object.
+         * @return true if the index exists
+         */
+        public static boolean existsIndex(RestHighLevelClient client, String indexName, String typeName, String objectId) {
+            boolean exists = false;
+            //System.out.println("objectId: " + objectId);
+            try {
+                GetRequest getRequest = new GetRequest(indexName, typeName, objectId);
+                //GetResponse getResponse = client.get(getRequest);
+                exists = client.exists(getRequest);
+
+            } catch (IOException ex) {
+                java.util.logging.Logger.getLogger(Util.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            return exists;
+        }
+
+        /**
+         * Search For CulturaOAIID Property on Index by OAIID value
+         *
+         * @param client ElasticSearch Client
+         * @param indexName Name of index to use.
+         * @param typeName Name of type in index.
+         * @param identifier oaiid value
+         * @return culturaoaiid if the property exists, if not returns null.
+         */
+        public static String checkForCulturaOAIIDPropByIdentifier(RestHighLevelClient client, String indexName, String typeName, String identifier) {
+            String ret = null;
+            try {
+                SearchRequest sreq = new SearchRequest(indexName);
+                sreq.searchType(SearchType.DEFAULT);
+                sreq.types(typeName);
+                //System.out.println("Identifier:"+identifier);
+                SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                searchSourceBuilder.query(QueryBuilders.termQuery("oaiid", identifier));
+                sreq.source(searchSourceBuilder);
+                SearchResponse resp = client.search(sreq);
+                if (resp != null && resp.getHits() != null && resp.getHits().getHits() != null && resp.getHits().getHits().length == 1) {
+                    SearchHit hit = resp.getHits().getHits()[0];
+                    ret = hit.getSourceAsString();
+                    //System.out.println("busqueda:......\n"+ret);
+                    DataObject jsonObj = (DataObject) DataObject.parseJSON(ret);
+                    ret = jsonObj.getString("culturaoaiid");
+                }
+
+            } catch (IOException ex) {
+                java.util.logging.Logger.getLogger(Util.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            return ret;
+        }
+
+        private String getId(SearchResponse resp) {
+            String ret = null;
+            if (resp != null && resp.getHits() != null
+                    && resp.getHits().getHits() != null && resp.getHits().getHits().length == 1) {
+                SearchHit hit = resp.getHits().getHits()[0];
+                ret = hit.getSourceAsString();
+            }
+            return ret;
+        }
+
+        /**
+         * Gets an object from ElasticSearch using document identifier.
+         *
+         * @param id Identifier of document to retrieve from index.
+         * @return JSONObject wrapping document information.
+         */
+        private static JSONObject getObjectById(String id) {
+            JSONObject ret = null;
+            GetRequest req = new GetRequest(REPO_INDEX, REPO_TYPE, id);
+            try {
+                GetResponse response = getElasticClient().get(req);
+                if (response.isExists()) {
+                    ret = new JSONObject(response.getSourceAsString());
+                    ret.put("_id", response.getId());
+                }
+            } catch (IOException ioex) {
+                logger.error(ioex);
+            }
+
+            return ret;
+        }
+
+        /**
          * Indexes a list of objects in ElasticSearch using bulk API.
+         *
          * @param objects List of objects Strings in JSON format.
          * @param client {@link RestHighLevelClient} object.
          * @param indexName Name of index to use.
@@ -280,7 +405,7 @@ public final class Util {
             String ret = "";
             if (null != oId && !oId.isEmpty()) {
                 UpdateRequest req = new UpdateRequest(indexName, typeName, oId);
-                req.doc(json);
+                req.doc(json, XContentType.JSON);
 
                 try {
                     UpdateResponse resp = client.update(req);
@@ -319,9 +444,9 @@ public final class Util {
 //            System.out.println(deleted);
 //            return deleted;
 //        }
-
         /**
          * Gets index name to work with according to environment configuration.
+         *
          * @return Name of index to use.
          */
         public static String getIndexName() {
@@ -330,6 +455,7 @@ public final class Util {
 
         /**
          * Creates an index in ElasticSearch.
+         *
          * @param client {@link RestHighLevelClient} object.
          * @param indexName Name of index to use.
          * @param mapping JSON String of index mapping.
@@ -354,6 +480,12 @@ public final class Util {
      * Inner class to encapsulate methods related to MongoDB actions.
      */
     public static final class MONGODB {
+
+        public static String MONGO_HOST = AppConfig.getConfigObject().getMongoHost();
+        public static int MONGO_PORT = AppConfig.getConfigObject().getMongoPort();
+        public static String MONGO_USER = AppConfig.getConfigObject().getMongoUser();
+        public static String MONGO_PASS = AppConfig.getConfigObject().getMongoPass();
+
         private static final HashMap<String, MongoClient> mongoClients = new HashMap<>();
 
         /**
@@ -362,7 +494,7 @@ public final class Util {
          * @return MongoClient instance object.
          */
         public static MongoClient getMongoClient() {
-            return getMongoClient("localhost", 27017);
+            return getMongoClient(MONGO_HOST, MONGO_PORT);
         }
 
         /**
@@ -384,9 +516,11 @@ public final class Util {
     }
 
     /**
-     * Inner class to encapsulate methods related to SWBForms DataManager actions.
+     * Inner class to encapsulate methods related to SWBForms DataManager
+     * actions.
      */
     public static final class SWBForms {
+
         /**
          * Carga en el hm todas las propiedades del DataObject
          *
@@ -547,7 +681,6 @@ public final class Util {
             return hm;
         }
 
-
         /**
          * Carga la colección de Replace a un HashMap<ocurrencia, reemplazo>
          *
@@ -611,6 +744,7 @@ public final class Util {
 
         /**
          * Converts an Object into a MongoDB generic object.
+         *
          * @param obj {@link Object} to convert
          * @return MongoDB generic object
          */
@@ -625,6 +759,7 @@ public final class Util {
 
         /**
          * Converts a {@link DataList} into a MongoDB {@link BasicDBList}
+         *
          * @param obj {@link DataList} to convert
          * @return BasicDBList
          */
@@ -645,6 +780,7 @@ public final class Util {
 
         /**
          * Reads {@link java.io.InputStream} content as a {@link String}
+         *
          * @param fis {@link FileInputStream} to read from
          * @param encoding Name of encoding to use on content read.
          * @return String wirh {@link InputStream} content.
@@ -668,6 +804,7 @@ public final class Util {
 
             return ret.toString();
         }
+
     }
 
     /**
@@ -918,4 +1055,83 @@ public final class Util {
             return aux;
         }
     }
+
+    /**
+     * Genera el Id consecutivo por Proveedor de datos
+     *
+     * @param holderIdentifier
+     * @param engine
+     * @return Identificador numérico consecutivo por proveedor de datos
+     */
+    public static synchronized long nextHolderId(String holderIdentifier, SWBScriptEngine engine) {
+        long next = -1L;
+
+        DataObject dobj;
+        SWBDataSource ds = engine.getDataSource("Serial");
+        dobj = new DataObject();
+        dobj.addSubObject("data").addParam("holderid", holderIdentifier);
+        try {
+            dobj = ds.fetch(dobj);
+            if (null != dobj && dobj.getDataObject("response").getDataList("data").size() == 1) {
+                dobj = dobj.getDataObject("response").getDataList("data").getDataObject(0);
+                next = dobj.getLong("next");
+                next++;
+                dobj.put("next", next);
+                ds.updateObj(dobj);
+            } else {
+                DataObject data = new DataObject();
+                data.put("holderid", holderIdentifier);
+                data.put("next", 1);
+                next = 1;
+                DataObject ret = ds.addObj(data);
+            }
+        } catch (IOException ioe) {
+            System.out.println("Error al generar Id consecutivo por proveedor de datos. Util.nextHolderId()");
+        }
+        return next;
+    }
+
+    public static synchronized DataObject addPatternOAIID2DataObject(String jsonObj, DataObject extractor, SWBScriptEngine engine, SWBDataSource transobjs) {
+        boolean ret = false;
+        DataObject dobj = null;
+        if (null != extractor && null != jsonObj) {
+            try {
+                dobj = (DataObject) DataObject.parseJSON(jsonObj);;
+
+                String hldrId = extractor.getString("holderid");
+                if (null != hldrId && hldrId.startsWith("NI")) {
+                    hldrId = hldrId.substring(2);
+                }
+                if (dobj.getString("culturaoaiid", null) != null) {
+                    return dobj;
+                }
+                String oaiPattern = AppConfig.getConfigObject().getOAIPattern();
+                String culturaId = oaiPattern;
+                String hldrIdDO = null;
+                String hldrOrig = null;
+                if (dobj.getString("holderid", null) != null && dobj.getString("holderid").trim().length() > 0) {
+                    hldrIdDO = dobj.getString("holderid").trim();
+                    if (hldrIdDO.toUpperCase().startsWith("NI")) {
+                        hldrIdDO = hldrIdDO.substring(2);
+                    }
+                }
+                if (null != hldrIdDO) {
+                    culturaId = oaiPattern.replace("{@idHolder}", hldrIdDO);
+                    hldrOrig = "NI" + hldrIdDO;
+                } else if (hldrId != null) {
+                    culturaId = oaiPattern.replace("{@idHolder}", hldrId);
+                    hldrOrig = "NI" + hldrId;
+                } else {
+                    return dobj;
+                }
+                String culturaoaiid = culturaId + String.format("%07d", Util.nextHolderId(hldrOrig, engine));
+                dobj.put("culturaoaiid", culturaoaiid);
+                transobjs.updateObj(dobj);
+            } catch (Exception e) {
+            }
+
+        }
+        return dobj;
+    }
+
 }

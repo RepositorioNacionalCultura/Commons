@@ -21,6 +21,10 @@ public class AppConfig {
     //MongoDB Configuration
     private final String mongoHost;
     private int mongoPort;
+    private final String mongoUser;
+    private final String mongoPass;
+    
+    private final String oaiPattern;
 
     private static AppConfig instance = null;
 
@@ -56,6 +60,11 @@ public class AppConfig {
         } catch (NumberFormatException nfe) {
             mongoPort = 27017;
         }
+        mongoUser = props.getProperty("mongo.user", "");
+        mongoPass = props.getProperty("mongo.pass", "");
+        
+        oaiPattern = props.getProperty("oai.pattern","oai:mexicana.cultura.gob.mx:{@idHolder}/");
+        
     }
 
     /**
@@ -105,6 +114,18 @@ public class AppConfig {
 
     public int getMongoPort() {
         return mongoPort;
+    }
+    
+    public String getMongoUser() {
+        return mongoUser;
+    }
+    
+    public String getMongoPass() {
+        return mongoPass;
+    }
+    
+    public String getOAIPattern() {
+        return oaiPattern;
     }
 
     public String getEnvName() {

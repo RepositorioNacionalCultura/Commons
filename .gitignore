@@ -53,3 +53,10 @@ fabric.properties
 .classpath
 .project
 .settings/
+
+README.md
+.idea/modules.xml
+.idea/misc.xml
+.idea/encodings.xml
+.idea/compiler.xml
+.idea/.name
