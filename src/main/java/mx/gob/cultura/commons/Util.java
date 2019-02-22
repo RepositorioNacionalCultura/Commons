@@ -2,6 +2,10 @@ package mx.gob.cultura.commons;
 
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
+import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
@@ -32,10 +36,13 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.logging.Level;
 import mx.gob.cultura.commons.config.AppConfig;
+import org.elasticsearch.action.delete.DeleteRequest;
+import org.elasticsearch.action.delete.DeleteResponse;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.search.SearchRequest;
@@ -47,6 +54,8 @@ import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.json.JSONObject;
+import org.semanticwb.datamanager.DataMgr;
+import org.semanticwb.datamanager.DataObjectIterator;
 
 /**
  * Utility class with common methods.
@@ -60,6 +69,7 @@ public final class Util {
     public static final String ENV_TESTING = "TEST";
     public static final String ENV_QA = "QA";
     public static final String ENV_PRODUCTION = "PROD";
+    private static HashMap<String, HashMap<String, String>> hmproplbl = null;
 
     private Util() {
     }
@@ -144,8 +154,10 @@ public final class Util {
         public static String REPO_INDEX = "cultura";
         public static String REPO_INDEX_TEST = "cultura_test";
         public static String REPO_TYPE = "bic";
-        public static String ELASTIC_SERVER;
-        public static int ELASTIC_PORT;
+        public static String ELASTIC_SERVER = AppConfig.getConfigObject().getElasticHost();
+        ;
+        public static int ELASTIC_PORT = AppConfig.getConfigObject().getElasticPort();
+        ;
 
         private static final HashMap<String, RestHighLevelClient> elasticClients = new HashMap<>();
 
@@ -262,6 +274,38 @@ public final class Util {
         }
 
         /**
+         * Remove Object from Index from the ElasticSearch.
+         *
+         * @param client {@link RestHighLevelClient} object.
+         * @param indexName Name of index to use.
+         * @param typeName Name of type in index.
+         * @param objectId ID for object.
+         * @return ID of indexed object or null if indexing fails.
+         */
+        public static boolean deleteIndexedObject(RestHighLevelClient client, String indexName, String typeName, String objectId) {
+            boolean ret = false;
+            String id = objectId;
+
+//            if (null == objectId || objectId.isEmpty()) {
+//                id = Util.ELASTICSEARCH.getUUID();
+//            }
+            DeleteRequest req = new DeleteRequest(indexName, typeName, id);
+            //req.source(objectJson, XContentType.JSON);
+
+            try {
+                //DeleteResponse response = getElasticClient().prepareDelete(indexName, typeName, id).get();   
+                DeleteResponse resp = client.delete(req);
+                if (resp.status().getStatus() == RestStatus.OK.getStatus()) {
+                    ret = true;
+                }
+            } catch (IOException ioex) {
+                logger.error("Error removing document from index request for object with id " + objectId, ioex);
+            }
+
+            return ret;
+        }
+
+        /**
          * Search on Index by _id parameter value
          *
          * @param client ElasticSearch Client
@@ -299,7 +343,7 @@ public final class Util {
                 SearchRequest sreq = new SearchRequest(indexName);
                 sreq.searchType(SearchType.DEFAULT);
                 sreq.types(typeName);
-                //System.out.println("Identifier:"+identifier);
+//                System.out.println("Identifier:"+identifier);
                 SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
                 searchSourceBuilder.query(QueryBuilders.termQuery("oaiid", identifier));
                 sreq.source(searchSourceBuilder);
@@ -307,9 +351,9 @@ public final class Util {
                 if (resp != null && resp.getHits() != null && resp.getHits().getHits() != null && resp.getHits().getHits().length == 1) {
                     SearchHit hit = resp.getHits().getHits()[0];
                     ret = hit.getSourceAsString();
-                    //System.out.println("busqueda:......\n"+ret);
+//                    System.out.println("busqueda:......\n"+ret);
                     DataObject jsonObj = (DataObject) DataObject.parseJSON(ret);
-                    ret = jsonObj.getString("culturaoaiid");
+                    ret = jsonObj.getString("culturaoaiid", null);
                 }
 
             } catch (IOException ex) {
@@ -470,6 +514,7 @@ public final class Util {
             }
             return ret;
         }
+
     }
 
     /**
@@ -1087,21 +1132,176 @@ public final class Util {
         return next;
     }
 
+    /**
+     * Regresa la etiqueta de la propiedad en el lenguaje solicitado, (es o en)
+     * si no se encuentra en el lenguaje, regresa el valor en el otro lenguaje
+     * si existe de lo contrario regresa null.
+     *
+     * @param propertyName, nombre de la propiedad
+     * @param language, código del lenguaje a buscar (es o en)
+     * @return Etiqueta de la propiedad en el lenguaje, null si no existe la
+     * propiedad
+     */
+    public static String getPropertyLabel(String propertyName, String language) {
+        String ret = null;
+        HashMap<String, String> hmlangs = null;
+        if (null == hmproplbl) {
+            hmproplbl = new HashMap();
+            DataObject dobj;
+            try {
+                DB db = Util.MONGODB.getMongoClient().getDB("SWBForms");
+                DBCollection dsLbls = db.getCollection("propLbls");
+                DBCursor cursor = dsLbls.find();
+                while (null != cursor && cursor.hasNext()) {
+                    DBObject next = cursor.next();
+                    dobj = (DataObject) DataObject.parseJSON(next.toString());
+                    hmlangs = new HashMap();
+                    hmlangs.put("es", dobj.getString("es", null));
+                    hmlangs.put("en", dobj.getString("en", null));
+                    hmproplbl.put(dobj.getString("propid"), hmlangs);
+                }
+            } catch (Exception e) {
+                System.out.println("Error al buscar etiqueta de la propiedad (" + propertyName + "). Util.getPropertyLabel()");
+                e.printStackTrace(System.out);
+            }
+        } else {
+            if (hmproplbl.containsKey(propertyName)) {
+                hmlangs = hmproplbl.get(propertyName);
+                if (hmlangs.containsKey(language)) {
+                    if (hmlangs.get(language) != null) {
+                        ret = hmlangs.get(language);
+                    } else {
+                        ret = hmlangs.get("es"); // por defecto regresa la etiqueta en español, null si no existe.
+                    }
+                } else {
+                    ret = null;
+                }
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Gets from DataSource dsName the list of properties if this dsName exists
+     * in the DataSource Collection
+     *
+     * @param dsName DataSource Name
+     * @return HashMap<propertyName,Property DataObject> with a list of
+     * propertyId - property DataObject
+     */
+    public static HashMap<String, DataObject> getAllDSProps(String dsName) {
+
+        HashMap<String, DataObject> ret = new HashMap();
+        try {
+            DB db = Util.MONGODB.getMongoClient().getDB("SWBForms");
+            DBCollection datasource = db.getCollection("DataSource");
+            DBCollection datafields = db.getCollection("DataSourceFields");
+
+            BasicDBObject dbQuery = new BasicDBObject("id", dsName);
+            DBObject dores = datasource.findOne(dbQuery);
+            DataObject dods = (DataObject) DataObject.parseJSON(dores.toString());
+
+            String dsid = dods.getId();
+
+            BasicDBObject dbQueryProp = new BasicDBObject("ds", dsid);
+            DBCursor cursor = datafields.find(dbQueryProp);
+            BasicDBObject sortBy = new BasicDBObject("order", 1);
+            cursor.sort(sortBy);
+
+            while (null != cursor && cursor.hasNext()) {
+                DBObject next = cursor.next();
+                DataObject dobj = (DataObject) DataObject.parseJSON(next.toString());
+                String objType = dobj.getString("type");
+                if (objType != null && !objType.isEmpty() && !objType.equals("section") && !objType.equals("header")) {
+                    ret.put(dobj.getString("name"), dobj);
+                }
+            }
+            cursor.close();
+        } catch (Exception e) {
+            System.out.println("Error al obtener la lista de propiedades del DataSource(" + dsName + "). Util.getAllDSProps()\n\n");
+            e.printStackTrace(System.out);
+        }
+        return ret;
+    }
+
+    /**
+     * Gets from DataSource dsName the list of facet properties if this dsName
+     * exists in the DataSource Collection
+     *
+     * @param dsName DataSource Name
+     * @return HashMap<propertyName,Property DataObject> with a list of
+     * propertyId - property DataObject
+     */
+    public static HashMap<String, DataObject> getAllDSFacetProps(String dsName) {
+
+        HashMap<String, DataObject> ret = new HashMap();
+        HashMap<String, DataObject> hmAll = getAllDSProps(dsName);
+        Iterator<DataObject> itprops = hmAll.values().iterator();
+        while (itprops.hasNext()) {
+            DataObject dobj = itprops.next();
+            try {
+                if (dobj.getBoolean("facetado")) {
+                    ret.put(dobj.getString("name"), dobj);
+                }
+            } catch (Exception e) {
+                System.out.println("Error al obtener la lista de propiedades para el facetado del DataSource(" + dsName + "). Util.getAllDSProps()");
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Gets from DataSource dsName the list of visible properties if this dsName
+     * exists in the DataSource Collection
+     *
+     * @param dsName DataSource Name
+     * @return HashMap<propertyName,Property DataObject> with a list of
+     * propertyId - property DataObject
+     */
+    public static HashMap<String, DataObject> getAllDSVisibleProps(String dsName) {
+
+        HashMap<String, DataObject> ret = new HashMap();
+        HashMap<String, DataObject> hmAll = getAllDSProps(dsName);
+        Iterator<DataObject> itprops = hmAll.values().iterator();
+        while (itprops.hasNext()) {
+            DataObject dobj = itprops.next();
+            try {
+                if (dobj.getBoolean("visible")) {
+                    ret.put(dobj.getString("name"), dobj);
+                }
+            } catch (Exception e) {
+                System.out.println("Error al obtener la lista de propiedades visibles del DataSource(" + dsName + "). Util.getAllDSProps()");
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Regresa el DataObject con el OAIID generado
+     *
+     * @param jsonObj JSON con la información del objeto que se le agregará el
+     * OAIID
+     * @param extractor DataObject de la definición del Extractor
+     * @param engine
+     * @param transobjs colección en donde se actualizará el JSON
+     * @return el DataObject actualizado con el OAIID generado
+     */
     public static synchronized DataObject addPatternOAIID2DataObject(String jsonObj, DataObject extractor, SWBScriptEngine engine, SWBDataSource transobjs) {
-        boolean ret = false;
+        //boolean ret = false;
         DataObject dobj = null;
         if (null != extractor && null != jsonObj) {
             try {
-                dobj = (DataObject) DataObject.parseJSON(jsonObj);;
+                dobj = (DataObject) DataObject.parseJSON(jsonObj);
 
                 String hldrId = extractor.getString("holderid");
                 if (null != hldrId && hldrId.startsWith("NI")) {
                     hldrId = hldrId.substring(2);
                 }
-                if (dobj.getString("culturaoaiid", null) != null) {
-                    return dobj;
-                }
+//                if (dobj.getString(" ", null) != null) {
+//                    return dobj;
+//                }
                 String oaiPattern = AppConfig.getConfigObject().getOAIPattern();
+//                System.out.println("\nPattern: "+oaiPattern+"\n\n");
                 String culturaId = oaiPattern;
                 String hldrIdDO = null;
                 String hldrOrig = null;
@@ -1124,6 +1324,7 @@ public final class Util {
                 dobj.put("culturaoaiid", culturaoaiid);
                 transobjs.updateObj(dobj);
             } catch (Exception e) {
+                System.out.println("Error al generar el OAIID de acuerdo al Pattern configurado. Util.addPatternOAIID2DataObject()");
             }
 
         }
