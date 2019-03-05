@@ -36,7 +36,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.logging.Level;
@@ -55,7 +54,6 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.json.JSONObject;
 import org.semanticwb.datamanager.DataMgr;
-import org.semanticwb.datamanager.DataObjectIterator;
 
 /**
  * Utility class with common methods.
@@ -256,6 +254,9 @@ public final class Util {
             if (null == objectId || objectId.isEmpty()) {
                 id = Util.ELASTICSEARCH.getUUID();
             }
+            //Harvester version 2
+            objectJson = replaceSURI2Name(objectJson);
+            ///////
 
             IndexRequest req = new IndexRequest(indexName, typeName, id);
             req.source(objectJson, XContentType.JSON);
@@ -444,6 +445,10 @@ public final class Util {
         public static String updateObject(RestHighLevelClient client, String indexName, String typeName, String oId, String json) {
             String ret = "";
             if (null != oId && !oId.isEmpty()) {
+
+                // Para la versión dos del Harvester
+                json = replaceSURI2Name(json);
+                /////////////////////////////////////////////////////////////
                 UpdateRequest req = new UpdateRequest(indexName, typeName, oId);
                 req.doc(json, XContentType.JSON);
 
@@ -1192,6 +1197,9 @@ public final class Util {
     public static HashMap<String, DataObject> getAllDSProps(String dsName) {
 
         HashMap<String, DataObject> ret = new HashMap();
+        if (null == dsName) {
+            return ret;
+        }
         try {
             DB db = Util.MONGODB.getMongoClient().getDB("SWBForms");
             DBCollection datasource = db.getCollection("DataSource");
@@ -1225,6 +1233,40 @@ public final class Util {
     }
 
     /**
+     * Regresa el Texto del correspondiente registro a partir del suri. Se
+     * utiliza para mandar a la indexación el texto y no el suri.
+     *
+     * @param suri identificador del valor del registro en el catálogo
+     * @return el nombre que le corresponde, de lo contrario regresa el suri
+     */
+    public static String getCatalogTextFromSURI(String suri) {
+        String ret = suri;
+        if (null == suri) {
+            return null;
+        }
+        try {
+//            ejemplo de suri : _suri:SWBForms:DataSourceFieldsExt:5c3e6f51b64a4280e7dcea61
+            String[] suriParts = suri.split(":");
+            if (suriParts.length == 4) {
+
+                String dsName = suriParts[2];
+                DB db = Util.MONGODB.getMongoClient().getDB("SWBForms");
+                DBCollection dsCat = db.getCollection(dsName);
+
+                BasicDBObject dbQuery = new BasicDBObject("_id", suri);
+                DBObject dores = dsCat.findOne(dbQuery);
+                DataObject dods = (DataObject) DataObject.parseJSON(dores.toString());
+
+                ret = dods.getString("name", suri);
+            }
+        } catch (Exception e) {
+            System.out.println("Error al obtener el texto a partir de SURI de un determinado Catalogo (" + suri + "). Util.getCatalogTextFromSURI()\n\n");
+            e.printStackTrace(System.out);
+        }
+        return ret;
+    }
+
+    /**
      * Gets from DataSource dsName the list of facet properties if this dsName
      * exists in the DataSource Collection
      *
@@ -1235,12 +1277,45 @@ public final class Util {
     public static HashMap<String, DataObject> getAllDSFacetProps(String dsName) {
 
         HashMap<String, DataObject> ret = new HashMap();
+        if (null == dsName) {
+            return ret;
+        }
         HashMap<String, DataObject> hmAll = getAllDSProps(dsName);
         Iterator<DataObject> itprops = hmAll.values().iterator();
         while (itprops.hasNext()) {
             DataObject dobj = itprops.next();
             try {
                 if (dobj.getBoolean("facetado")) {
+                    ret.put(dobj.getString("name"), dobj);
+                }
+            } catch (Exception e) {
+                System.out.println("Error al obtener la lista de propiedades para el facetado del DataSource(" + dsName + "). Util.getAllDSProps()");
+            }
+        }
+        return ret;
+    }
+
+    /**
+     * Gets from DataSource dsName the list of select type properties if this
+     * dsName exists in the DataSource Collection
+     *
+     * @param dsName DataSource Name
+     * @return HashMap<propertyName,Property DataObject> with a list of
+     * propertyId - property DataObject
+     */
+    public static HashMap<String, DataObject> getAllDSSelectProps(String dsName) {
+
+        HashMap<String, DataObject> ret = new HashMap();
+        if (null == dsName) {
+            return ret;
+        }
+        HashMap<String, DataObject> hmAll = getAllDSProps(dsName);
+        Iterator<DataObject> itprops = hmAll.values().iterator();
+        while (itprops.hasNext()) {
+            DataObject dobj = itprops.next();
+            try {
+                String objType = dobj.getString("type");
+                if (objType != null && !objType.isEmpty() && objType.equals("select")) {
                     ret.put(dobj.getString("name"), dobj);
                 }
             } catch (Exception e) {
@@ -1277,6 +1352,64 @@ public final class Util {
     }
 
     /**
+     * Reemplaza SURi por su texto correspondiente
+     *
+     * @param json del registro con propiedades que tengan SURI
+     * @return json modificado
+     */
+    public static String replaceSURI2Name(String json) {
+        try {
+            // Para la versión dos del Harvester
+
+//            System.out.println("\n=============================================================\n");
+//            System.out.println("\n\nINDEXAR - OBJETO....\n\n" + json);
+            HashMap<String, DataObject> hmSelectProp = getAllDSSelectProps("Record");
+//            System.out.println("\n=============================================================\n");
+//            System.out.println("Propiedades tipo select..."+hmSelectProp.size()+"\n\n");
+            if (!hmSelectProp.isEmpty()) {
+
+                DataObject doJson = (DataObject) DataObject.parseJSON(json);
+                Iterator<String> itsel = hmSelectProp.keySet().iterator();
+                while (itsel.hasNext()) {
+                    String keyProp = itsel.next();
+//                    System.out.println("Property: "+keyProp+"===>"+doJson.containsKey(keyProp));
+                    if (doJson.containsKey(keyProp)) {
+                        //DataObject doProp = hmSelectProp.get(keyProp);
+                        Object objTemp = doJson.get(keyProp);
+                        if (objTemp instanceof String) {
+                            String tmpId = (String) objTemp;
+                            doJson.put(keyProp, Util.getCatalogTextFromSURI(tmpId));
+                        } else if (objTemp instanceof DataList) {
+                            DataList dlIds = (DataList) objTemp;
+                            String[] txtVals = new String[dlIds.size()];
+                            for (int i = 0; i < dlIds.size(); i++) {
+                                String tmpId = dlIds.getString(i);
+                                txtVals[i] = Util.getCatalogTextFromSURI(tmpId);
+                            }
+                            doJson.put(keyProp, txtVals);
+                        }
+                    }
+                }
+                json = Util.SWBForms.toBasicDBObject(doJson).toString();
+//                System.out.println("\n\nOBJETO MODIFICADO....\n\n" + json);
+//                System.out.println("\n=============================================================\n");
+            }
+            /////////////////////////////////////////////////////////////
+        } catch (Exception e) {
+            System.out.println("Error al convertir SURI a Texto....Util.replaceSURI2Name()");
+            e.printStackTrace(System.out);
+        }
+        return json;
+    }
+
+    public static File getThumbnailFromImageFile(File file, String path) {
+        File ret = null;
+
+        return ret;
+
+    }
+
+    /**
      * Regresa el DataObject con el OAIID generado
      *
      * @param jsonObj JSON con la información del objeto que se le agregará el
@@ -1287,7 +1420,6 @@ public final class Util {
      * @return el DataObject actualizado con el OAIID generado
      */
     public static synchronized DataObject addPatternOAIID2DataObject(String jsonObj, DataObject extractor, SWBScriptEngine engine, SWBDataSource transobjs) {
-        //boolean ret = false;
         DataObject dobj = null;
         if (null != extractor && null != jsonObj) {
             try {
@@ -1297,11 +1429,7 @@ public final class Util {
                 if (null != hldrId && hldrId.startsWith("NI")) {
                     hldrId = hldrId.substring(2);
                 }
-//                if (dobj.getString(" ", null) != null) {
-//                    return dobj;
-//                }
                 String oaiPattern = AppConfig.getConfigObject().getOAIPattern();
-//                System.out.println("\nPattern: "+oaiPattern+"\n\n");
                 String culturaId = oaiPattern;
                 String hldrIdDO = null;
                 String hldrOrig = null;
@@ -1325,10 +1453,91 @@ public final class Util {
                 transobjs.updateObj(dobj);
             } catch (Exception e) {
                 System.out.println("Error al generar el OAIID de acuerdo al Pattern configurado. Util.addPatternOAIID2DataObject()");
+                e.printStackTrace(System.out);
             }
 
         }
         return dobj;
+    }
+
+    /**
+     * Genera el thumbnail de la información de imagen recibida en el DataObject
+     *
+     * @param fileInfo, DataObject con la información de la imágen
+     * @return DataObject con la información del thumbnail.
+     */
+    public static DataObject createThumbnail(DataObject fileInfo) {
+        DataObject ret = null;
+
+        try {
+            if (null != fileInfo) {
+                String ftype = fileInfo.getString("type", null);
+                if (null == ftype) {
+                    return ret;
+                }
+                ftype = ftype.substring(ftype.lastIndexOf("/") + 1);
+                String originalImagePath = DataMgr.getApplicationPath() + "uploadfile/" + fileInfo.getString("id");
+                File fsource = new File(originalImagePath);
+                File fthumbnail = new File(originalImagePath + "_th");
+
+                fsource.createNewFile();
+                fthumbnail.setWritable(true);
+                ImageResizer.resizeCrop(fsource, 100, fthumbnail, ftype);
+                //System.out.println("New File...." + fthumbnail.getAbsolutePath());
+                ret = new DataObject();
+                ret.put("target_name", null);
+                ret.put("id", fileInfo.getString("id") + "_th");
+                String fnameorig = fileInfo.getString("name");
+                String fname = fnameorig.substring(0, fnameorig.lastIndexOf("."));
+                String fnameext = fnameorig.substring(fnameorig.lastIndexOf("."));
+                //fname = fname.substring(0,fname.lastIndexOf("."))+"_th"+fname.substring(fname.lastIndexOf(".")+1);
+                ret.put("name", fname + "_th" + fnameext);
+                ret.put("size", fthumbnail.length());
+                ret.put("lastModifiedDate",fileInfo.get("lastModifiedDate"));
+                ret.put("type",fileInfo.getString("type"));
+
+            }
+        } catch (Exception e) {
+            System.out.println("Error al crear el Thumbnail..");
+            e.printStackTrace(System.out);
+        }
+
+        return ret;
+    }
+    
+    /**
+     * Revisa archivos a eliminar para no dejar en el servidor archivos que ya
+     * no se utilizarán
+     *
+     * @param newValues arreglo con los nombres de archivos nuevos
+     * @param oldValues arreglo con los nombres de archivos anteriores
+     * @return true si no existe error al revisar y eliminar archivos anteriores
+     */
+    public static boolean checkFiles(String[] newValues, String[] oldValues) {
+        boolean ret = false;
+        HashMap<String, String> hmNew = new HashMap();
+        try {
+            if (newValues != null && oldValues != null) {
+                for (int i = 0; i < newValues.length; i++) {
+                    hmNew.put(newValues[i], newValues[i]);
+                }
+                //revisando si los archivos anteriores si siguen existiendo
+                for (int i = 0; i < oldValues.length; i++) {
+                    if (hmNew.get(oldValues[i]) == null) {
+                        //si ya no aparece en los nuevos hay que eliminarlos
+                        File f = new File(DataMgr.getApplicationPath() + "/uploadfile/" + oldValues[i]);
+                        if (f.exists()) {
+                            ret = f.delete();
+                        }
+                    }
+                }
+                ret = true;
+            }
+        } catch (Exception e) {
+            ret = false;
+            System.out.println("Error al tratar de eliminar archivos en el servidor TrainerService " + e.getMessage());
+        }
+        return ret;
     }
 
 }

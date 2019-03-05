@@ -26,6 +26,8 @@ public class AppConfig {
     
     private final String oaiPattern;
 
+    private final String webPath;
+
     private static AppConfig instance = null;
 
     /**
@@ -64,6 +66,7 @@ public class AppConfig {
         mongoPass = props.getProperty("mongo.pass", "");
         
         oaiPattern = props.getProperty("oai.pattern","oai:mexicana.cultura.gob.mx:{@idHolder}/");
+        webPath = props.getProperty("webpath","http://localhost");
         
     }
 
@@ -131,4 +134,9 @@ public class AppConfig {
     public String getEnvName() {
         return envName;
     }
+    
+    public String getWebPath() {
+        return webPath;
+    }
+
 }
