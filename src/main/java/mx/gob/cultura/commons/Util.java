@@ -1423,6 +1423,7 @@ public final class Util {
         DataObject dobj = null;
         if (null != extractor && null != jsonObj) {
             try {
+                //System.out.println("\n\nJSON: "+jsonObj);
                 dobj = (DataObject) DataObject.parseJSON(jsonObj);
 
                 String hldrId = extractor.getString("holderid");
@@ -1450,7 +1451,10 @@ public final class Util {
                 }
                 String culturaoaiid = culturaId + String.format("%07d", Util.nextHolderId(hldrOrig, engine));
                 dobj.put("culturaoaiid", culturaoaiid);
-                transobjs.updateObj(dobj);
+                //System.out.println("\n\nJSON: dobj tiene _id:"+(dobj!=null?dobj.getString("_id","No tiene"):"dobj es NULL"));
+                if(dobj.getString("_id",null)!=null){
+                    transobjs.updateObj(dobj);
+                }
             } catch (Exception e) {
                 System.out.println("Error al generar el OAIID de acuerdo al Pattern configurado. Util.addPatternOAIID2DataObject()");
                 e.printStackTrace(System.out);
