@@ -68,6 +68,8 @@ public final class Util {
     public static final String ENV_QA = "QA";
     public static final String ENV_PRODUCTION = "PROD";
     private static HashMap<String, HashMap<String, String>> hmproplbl = null;
+    private static double now = System.currentTimeMillis();
+    
 
     private Util() {
     }
@@ -1150,7 +1152,10 @@ public final class Util {
     public static String getPropertyLabel(String propertyName, String language) {
         String ret = null;
         HashMap<String, String> hmlangs = null;
-        if (null == hmproplbl) {
+        double thistime = System.currentTimeMillis();
+        double nowtime = now +(120*1000);
+        if (null == hmproplbl || thistime >= nowtime) {
+            now = thistime;
             hmproplbl = new HashMap();
             DataObject dobj;
             try {
